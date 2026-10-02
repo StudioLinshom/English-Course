@@ -34,21 +34,13 @@ function doPost(e) {
   return json_({ ok: true });
 }
 
-// Words with score >= 3. Accepts {words:{w:{score}}}, {scores:{w:n}}, or arrays of {score}.
+// Words with score >= 3 (data.score is {word: 0..3}).
 function countMastered_(data) {
-  const src = data.words || data.scores || data.progress || {};
-  const vals = Array.isArray(src) ? src : Object.keys(src).map(function (k) { return src[k]; });
-  return vals.filter(function (v) {
-    const s = typeof v === 'number' ? v : (v && v.score);
-    return s >= 3;
-  }).length;
+  const sc = data.score || {};
+  return Object.keys(sc).filter(function (k) { return sc[k] >= 3; }).length;
 }
 
-// Distinct practice days. Accepts data.days / data.practiceDays as array, object, or number.
+// Distinct practice days (data.days is an array of YYYY-MM-DD).
 function countDays_(data) {
-  const d = data.days || data.practiceDays || data.history;
-  if (typeof d === 'number') return d;
-  if (Array.isArray(d)) return d.length;
-  if (d && typeof d === 'object') return Object.keys(d).length;
-  return 0;
+  return Array.isArray(data.days) ? data.days.length : 0;
 }
