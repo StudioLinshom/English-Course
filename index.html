@@ -87,6 +87,9 @@ h2{font-size:18px;margin:26px 0 10px}
 .dots{display:flex;gap:3px;direction:ltr}
 .dots i{width:9px;height:9px;border-radius:50%;background:var(--line)}
 .dots i.on{background:var(--field-2)}
+.wl .en{flex:1}
+.mk{flex:none;background:var(--paper);border:2px solid var(--line);border-radius:99px;padding:3px 10px;font-size:13px;color:var(--muted)}
+.mk.on{background:var(--field);border-color:var(--field);color:#fff}
 
 /* Card */
 .progress{font-size:14px;color:var(--muted);margin-bottom:8px}
@@ -263,10 +266,16 @@ function weekScreen(){
     <button class="mode" data-m="quiz"><b>בוחן אמריקאי</b><span>${ROUND} שאלות, 4 תשובות לבחירה</span></button>
     <button class="mode" data-m="type"><b>כתיבה</b><span>רואים בעברית, כותבים באנגלית</span></button>
   </div>
-  ${w!==8?`<div class="wordlist">${list.map(x=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="dots">${[0,1,2].map(i=>`<i class="${sc(x.en)>i?'on':''}"></i>`).join("")}</span></div>`).join("")}</div>
-  <p class="note">3 נקודות ירוקות = המילה נתפסה. תשובה שגויה מאפסת את הנקודות.</p>`:""}`;
+  ${w!==8?`<div class="wordlist">${list.map((x,k)=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="dots">${[0,1,2].map(i=>`<i class="${sc(x.en)>i?'on':''}"></i>`).join("")}</span><button class="mk ${sc(x.en)>=MASTER?'on':''}" data-k="${k}" aria-pressed="${sc(x.en)>=MASTER}">${sc(x.en)>=MASTER?'✓ יודע':'יודע'}</button></div>`).join("")}</div>
+  <p class="note">3 נקודות ירוקות = המילה נתפסה. תשובה שגויה מאפסת את הנקודות. אפשר ללחוץ "יודע" כדי לסמן מילה כידועה.</p>`:""}`;
   app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
   app.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>start(b.dataset.m, list));
+  app.querySelectorAll(".mk").forEach(b=>b.onclick=()=>{
+    const x=list[+b.dataset.k];
+    if(sc(x.en)>=MASTER){ if(!confirm(`לבטל את הסימון של "${x.en}"?`)) return; S.score[x.en]=0; }
+    else S.score[x.en]=MASTER;
+    save(); const y=window.scrollY; render(); window.scrollTo(0,y);
+  });
 }
 
 function pickRound(list){
