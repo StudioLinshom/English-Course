@@ -1,7 +1,9 @@
 package io.github.studiolinshom.englishwords;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.speech.tts.TextToSpeech;
@@ -12,6 +14,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
@@ -20,7 +23,8 @@ public class MainActivity extends Activity {
 
     WebView web;
     TextToSpeech tts;
-    boolean ttsReady;
+    boolean ttsReady, ttsFailed, warnedVolume;
+    String pendingText;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -60,10 +64,23 @@ public class MainActivity extends Activity {
         tts = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
             @Override
             public void onInit(int status) {
-                if (status != TextToSpeech.SUCCESS) return;
-                tts.setLanguage(Locale.US);
+                if (status != TextToSpeech.SUCCESS) {
+                    ttsFailed = true;
+                    toast("מנוע ההקראה של הטלפון לא זמין");
+                    return;
+                }
+                if (!setEnglish()) {
+                    ttsFailed = true;
+                    toast("חסר קול באנגלית בטלפון. פותח התקנה…");
+                    try {
+                        startActivity(new Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    } catch (Exception e) { }
+                    return;
+                }
                 tts.setSpeechRate(0.85f);
                 ttsReady = true;
+                if (pendingText != null) { say(pendingText); pendingText = null; }
             }
         });
         web.addJavascriptInterface(new Speaker(), "AndroidTTS");
@@ -72,10 +89,35 @@ public class MainActivity extends Activity {
         else web.loadUrl(APP_URL);
     }
 
+    boolean setEnglish() {
+        for (Locale l : new Locale[] { Locale.US, Locale.UK, Locale.ENGLISH }) {
+            if (tts.setLanguage(l) >= TextToSpeech.LANG_AVAILABLE) return true;
+        }
+        return false;
+    }
+
+    void say(String text) {
+        AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        if (!warnedVolume && am != null && am.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
+            warnedVolume = true;
+            toast("עוצמת המדיה על 0. הגבירו כדי לשמוע");
+        }
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "w");
+    }
+
+    void toast(final String msg) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() { Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show(); }
+        });
+    }
+
     class Speaker {
         @JavascriptInterface
         public void speak(String text) {
-            if (ttsReady) tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "w");
+            if (ttsReady) say(text);
+            else if (ttsFailed) toast("ההקראה לא זמינה בטלפון הזה");
+            else pendingText = text;
         }
     }
 
