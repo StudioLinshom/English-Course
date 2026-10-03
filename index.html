@@ -59,6 +59,8 @@ h2{font-size:18px;margin:26px 0 10px}
 .lv{flex:none;background:var(--paper);border:2px solid var(--line);border-radius:99px;padding:6px 14px;font-size:15px;font-weight:600}
 .lv.cur{background:var(--field);border-color:var(--field);color:#fff}
 .lv:disabled{opacity:.55;cursor:default}
+.mode.review{margin-top:12px}
+.mode.review.due{border-color:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb, var(--sun) 35%, transparent)}
 .mode.next{margin-top:12px;border-color:var(--sun);background:var(--sun);color:#1C2B4B}
 .mode.next span{color:#1C2B4B}
 .weeks{display:grid;gap:10px}
@@ -189,7 +191,7 @@ function useLevel(n){ WEEKS = LEVELS[n-1].weeks; ALL = LEVEL_WORDS[n-1]; }
 const MASTER = 3, ROUND = 10;
 
 /* ---------- state + storage ---------- */
-const fresh = () => ({score:{}, wrong:{}, days:[], placed:false, placedLv:{}, unlocked:{}, level:1, updated:""});
+const fresh = () => ({score:{}, wrong:{}, days:[], placed:false, placedLv:{}, unlocked:{}, level:1, seen:{}, forgot:{}, lastReview:"", updated:""});
 let S = fresh();
 const LS = "vocab100-progress";
 const API = "https://script.google.com/macros/s/AKfycbx7OlcWD9IdMyp_s0ngiI7V1r453A_nfY-pvUR0b-YUdtOmXxKqZTLJ193OyTaGN_16/exec";
@@ -205,15 +207,22 @@ function loadLocal(){ try{ const v = localStorage.getItem(LS); if(v) S = Object.
 // Fills fields added after launch and points WEEKS/ALL at the current level.
 function normalize(){
   S.placedLv = S.placedLv || {}; if(S.placed) S.placedLv[1] = true;
+  S.seen = S.seen || {}; S.forgot = S.forgot || {}; S.lastReview = S.lastReview || "";
   S.unlocked = S.unlocked || {};
   S.level = S.level >= 1 && S.level <= LEVELS.length && isOpen(S.level) ? S.level : 1;
+  keepOpenLevels();
   useLevel(S.level);
 }
 // S.unlocked[n]: true = opened by a parent, false = closed by a parent, unset = opens at UNLOCK words.
 function isOpen(n){ return n===1 || (S.unlocked[n] ?? known(LEVEL_WORDS[n-2]) >= UNLOCK); }
+function keepOpenLevels(){
+  for(let n=2; n<=LEVELS.length; n++)
+    if(S.unlocked[n]===undefined && known(LEVEL_WORDS[n-2]) >= UNLOCK) S.unlocked[n] = true;
+}
 function setLevel(n){ S.level = n; useLevel(n); save(); go({name:"home"}); }
 function writeLocal(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
 function save(){
+  keepOpenLevels();
   S.updated = new Date().toISOString();
   writeLocal();
   pending = true;
@@ -244,7 +253,7 @@ async function pull(){
     const d = await r.json();
     if(d.error) throw new Error(d.error);
     if(d.updated && (!S.updated || d.updated > S.updated)){
-      S = {score:d.score||{}, wrong:d.wrong||{}, days:d.days||[], placed:!!d.placed, placedLv:d.placedLv||{}, unlocked:d.unlocked||{}, level:d.level||1, updated:d.updated};
+      S = {score:d.score||{}, wrong:d.wrong||{}, days:d.days||[], placed:!!d.placed, placedLv:d.placedLv||{}, unlocked:d.unlocked||{}, level:d.level||1, seen:d.seen||{}, forgot:d.forgot||{}, lastReview:d.lastReview||"", updated:d.updated};
       normalize();
       writeLocal();
       if(view.name !== "play") render();
@@ -262,10 +271,14 @@ document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState=
 
 const sc = en => S.score[en]||0;
 const known = list => list.filter(w => sc(w.en) >= MASTER).length;
+const today = () => new Date().toISOString().slice(0,10);
+const daysSince = d => d ? Math.floor((Date.parse(today()) - Date.parse(d)) / 864e5) : Infinity;
 function bump(en, ok){
+  if(!ok && sc(en) >= MASTER) S.forgot[en] = (S.forgot[en]||0)+1;
   S.score[en] = ok ? Math.min(MASTER, sc(en)+1) : 0;
   if(!ok) S.wrong[en] = (S.wrong[en]||0)+1;
-  const d = new Date().toISOString().slice(0,10);
+  const d = today();
+  S.seen[en] = d;
   if(!S.days.includes(d)) S.days.push(d);
   save();
 }
@@ -323,6 +336,7 @@ function home(){
     return `<button class="lv ${l.n===S.level?'cur':''}" data-l="${l.n}" ${o?'':'disabled'}>${o?'':'🔒 '}שלב ${l.n}${done?' ✓':''}</button>`; }).join("")}</div>
   ${nextLevelNote(k)}
   ${!S.placedLv[S.level] ? `<button class="mode" style="margin-top:16px" data-a="place"><b>מבחן פתיחה</b><span>עוברים על כל 100 המילים ומסמנים מה כבר יודעים. לוקח כ-10 דקות.</span></button>`:""}
+  ${reviewCard()}
   <h2>השבועות</h2>
   <div class="weeks">
     ${WEEKS.map(w=>{ const list=ALL.filter(x=>x.week===w.n), kk=known(list), p=Math.round(kk/list.length*100);
@@ -335,6 +349,7 @@ function home(){
   <div class="links"><button class="ghost" data-a="parent">מסך הורה</button><span class="sync" id="sync" data-s="${syncState}">${SYNC_TEXT[syncState]}</span></div>`;
   app.querySelectorAll("[data-w]").forEach(b=>b.onclick=()=>go({name:"week",w:+b.dataset.w}));
   app.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>setLevel(+b.dataset.l));
+  const rv = app.querySelector('[data-a="review"]'); if(rv) rv.onclick=startReview;
   const nx = app.querySelector('[data-a="next"]'); if(nx) nx.onclick=()=>setLevel(S.level+1);
   const pl = app.querySelector('[data-a="place"]'); if(pl) pl.onclick=()=>start("place", ALL);
   app.querySelector('[data-a="parent"]').onclick=()=>go({name:"parent"});
@@ -378,19 +393,43 @@ function pickRound(list){
   const review = Math.min(strong.length, weak.length >= ROUND ? 2 : 3);
   return shuffle([...weak.slice(0, ROUND-review), ...strong.slice(0, review)]);
 }
+const OLD_PER_ROUND = 2, REVIEW_ROUND = 10, REVIEW_EVERY = 7;
+const prevWords = () => LEVEL_WORDS.slice(0, S.level-1).flat();
+// Old words to bring back: ones not (or no longer) known first, then the least
+// recently practiced, then the ones with most mistakes.
+function oldestFirst(list, n){
+  const rank = x => sc(x.en) >= MASTER ? 1 : 0;
+  return shuffle(list).sort((a,b)=> rank(a)-rank(b) || (S.seen[a.en]||"").localeCompare(S.seen[b.en]||"") || (S.wrong[b.en]||0)-(S.wrong[a.en]||0)).slice(0, n);
+}
 // Flashcards: words not yet known first, known ones at the end.
 function flashOrder(list){
   return [...shuffle(list.filter(x=>sc(x.en)<MASTER)), ...shuffle(list.filter(x=>sc(x.en)>=MASTER))];
 }
 function start(mode, list){
-  const items = mode==="place" ? shuffle(ALL) : (mode==="flash" ? flashOrder(list) : pickRound(list));
+  let items = mode==="place" ? shuffle(ALL) : (mode==="flash" ? flashOrder(list) : pickRound(list));
+  // Quiz and typing in level 2+ also bring back a couple of words from earlier levels.
+  if((mode==="quiz" || mode==="type") && S.level > 1){
+    const old = oldestFirst(prevWords(), OLD_PER_ROUND);
+    items = shuffle([...items, ...old]);
+  }
   go({name:"play", mode, items, i:0, right:0, missed:[], pool:list, back:view.w||null});
 }
 
+function startReview(){
+  const prev = prevWords();
+  go({name:"play", mode:"quiz", review:true, items:oldestFirst(prev, REVIEW_ROUND), i:0, right:0, missed:[], pool:prev, back:null});
+}
+function reviewCard(){
+  if(S.level < 2) return "";
+  const ago = daysSince(S.lastReview), due = ago >= REVIEW_EVERY;
+  const when = S.lastReview ? (ago===0 ? "חזרה אחרונה: היום" : `חזרה אחרונה: לפני ${ago} ימים`) : "עוד לא עשית חזרה";
+  return `<button class="mode review ${due?'due':''}" data-a="review"><b>${due?'הגיע הזמן לחזרה! ':''}חזרה על שלבים קודמים</b><span>${REVIEW_ROUND} שאלות ממילים של ${S.level===2?'שלב 1':'שלבים 1–'+(S.level-1)}. ${when}.</span></button>`;
+}
 function play(){
   const v=view, x=v.items[v.i];
-  if(!x){ if(v.mode==="place"){ S.placedLv[S.level]=true; if(S.level===1) S.placed=true; save(); } return go({name:"result", mode:v.mode, right:v.right, total:v.items.length, missed:v.missed, back:v.back}); }
-  const head = `<div class="top"><button class="back" data-a="quit">יציאה</button><span class="title">${{flash:"כרטיסיות",quiz:"בוחן",type:"כתיבה",place:"מבחן פתיחה"}[v.mode]}</span></div>
+  if(!x){ if(v.review){ S.lastReview = today(); save(); }
+    if(v.mode==="place"){ S.placedLv[S.level]=true; if(S.level===1) S.placed=true; save(); } return go({name:"result", mode:v.mode, right:v.right, total:v.items.length, missed:v.missed, back:v.back}); }
+  const head = `<div class="top"><button class="back" data-a="quit">יציאה</button><span class="title">${v.review ? "חזרה על שלבים קודמים" : {flash:"כרטיסיות",quiz:"בוחן",type:"כתיבה",place:"מבחן פתיחה"}[v.mode]}</span></div>
   <div class="progress">${v.i+1} מתוך ${v.items.length}</div>`;
   const pastLine = x.past ? `<div class="hint">עבר: <span class="en">${esc(x.past)}</span></div>` : "";
 
@@ -494,9 +533,11 @@ function parent(){
   <h2>כל השלבים</h2>
   <div class="wordlist">
     ${LEVELS.map(l=>{ const lw=LEVEL_WORDS[l.n-1], o=isOpen(l.n);
-      return `<div class="wl"><span>שלב ${l.n}${o?'':' 🔒'}</span><b>${known(lw)} / ${lw.length}</b>${l.n===1?'':o?`<button class="mk" data-c="${l.n}">סגור</button>`:`<button class="mk" data-u="${l.n}">פתח</button>`}</div>`; }).join("")}
+      const dropped = lw.filter(x=>S.forgot[x.en] && sc(x.en)<MASTER).length;
+      return `<div class="wl"><span>שלב ${l.n}${o?'':' 🔒'}${dropped?` <span class="note" style="margin:0">(${dropped} נשכחו)</span>`:''}</span><b>${known(lw)} / ${lw.length}</b>${l.n===1?'':o?`<button class="mk" data-c="${l.n}">סגור</button>`:`<button class="mk" data-u="${l.n}">פתח</button>`}</div>`; }).join("")}
     <div class="wl"><span><b>סה"כ מילים שהוא יודע</b></span><b>${known(EVERY)} / ${EVERY.length}</b></div>
   </div>
+  <p class="note">${S.level>1 ? (S.lastReview ? `חזרה אחרונה על שלבים קודמים: ${S.lastReview.split("-").reverse().join("/")}. ` : "עוד לא נעשתה חזרה על שלבים קודמים. ") : ""}"נשכחו" = מילים שכבר ידע, טעה בהן, ועוד לא למד מחדש.</p>
   <p class="note">שלב חדש נפתח כשיודעים ${UNLOCK} מילים מהשלב הקודם. אפשר גם לפתוח או לסגור שלב ידנית. שלב שנסגר ייפתח שוב לבד כשיגיע ל-${UNLOCK} מילים בשלב הקודם (אם כבר עבר את זה, הוא יישאר סגור עד שתפתח אותו).</p>
   <h2>מילים שהכי קשות לו</h2>
   ${hard.length?`<div class="wordlist">${hard.map(x=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="note" style="margin:0">${x.n} טעויות</span></div>`).join("")}</div>
