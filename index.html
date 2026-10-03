@@ -116,6 +116,8 @@ input.type{width:100%;margin-top:14px;padding:14px;font-size:24px;border-radius:
 .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:12px}
 .chip{background:var(--paper);border:2px solid var(--line);border-radius:99px;padding:4px 12px}
 .note{color:var(--muted);font-size:14px;margin-top:8px}
+#flash{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--chalk);padding:10px 18px;border-radius:12px;font-size:15px;opacity:0;pointer-events:none;transition:opacity .2s}
+#flash.show{opacity:1}
 .pop{animation:pop .35s ease}
 @keyframes pop{0%{transform:scale(.96)}60%{transform:scale(1.03)}100%{transform:scale(1)}}
 @media (prefers-reduced-motion:reduce){.pop{animation:none}.bar i{transition:none}}
@@ -215,7 +217,23 @@ function streak(){
   for(;;){ const k=d.toISOString().slice(0,10); if(S.days.includes(k)){n++; d.setDate(d.getDate()-1);} else break; }
   return n;
 }
-function speak(t){ if(window.AndroidTTS){ try{ AndroidTTS.speak(t); }catch(e){} return; } try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(t); u.lang="en-US"; u.rate=.85; speechSynthesis.speak(u);}catch(e){} }
+const PAGE_VERSION = 5;
+let lastSpeak = "";
+function speak(t){
+  if(window.AndroidTTS){
+    try{ AndroidTTS.speak(t); lastSpeak = "אנדרואיד"; }catch(e){ lastSpeak = "שגיאה בגשר: " + e.message; flash("ההשמעה נכשלה"); }
+    return;
+  }
+  if(!("speechSynthesis" in window)){ lastSpeak = "אין מנוע השמעה"; flash("ההשמעה לא זמינה כאן"); return; }
+  try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(t); u.lang="en-US"; u.rate=.85; speechSynthesis.speak(u); lastSpeak = "דפדפן"; }
+  catch(e){ lastSpeak = "שגיאה: " + e.message; }
+}
+function flash(msg){
+  let el = document.getElementById("flash");
+  if(!el){ el = document.createElement("div"); el.id = "flash"; document.body.appendChild(el); }
+  el.textContent = msg; el.className = "show";
+  clearTimeout(flash.t); flash.t = setTimeout(()=>{ el.className = ""; }, 2500);
+}
 const shuffle = a => { a=[...a]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const app = document.getElementById("app");
@@ -394,10 +412,23 @@ function parent(){
   <h2>מילים שהכי קשות לו</h2>
   ${hard.length?`<div class="wordlist">${hard.map(x=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="note" style="margin:0">${x.n} טעויות</span></div>`).join("")}</div>
   <p class="note">את המילים האלה כדאי לשלב השבוע ב"מילה של היום" ובשיחה.</p>`:`<p class="note">עוד אין טעויות רשומות.</p>`}
+  <h2>בדיקת השמעה</h2>
+  <button class="ghost" data-a="ttstest">השמע "hello"</button>
+  <p class="note" id="ttsinfo" style="direction:rtl"></p>
   <h2>ימי תרגול אחרונים</h2>
   <p>${last.length?last.map(d=>d.split("-").reverse().slice(0,2).join("/")).join(" · "):"עוד לא תרגל."}</p>
   <div class="links"><button class="ghost" data-a="reset">איפוס כל ההתקדמות</button></div>`;
   app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
+  app.querySelector('[data-a="ttstest"]').onclick=()=>{
+    speak("hello");
+    document.getElementById("ttsinfo").innerHTML = [
+      "גרסת עמוד: " + PAGE_VERSION,
+      "סביבה: " + (/; wv\)/.test(navigator.userAgent) ? "אפליקציה (WebView)" : "דפדפן"),
+      "גשר אנדרואיד: " + (window.AndroidTTS ? "יש" : "אין"),
+      "דיבור דפדפן: " + ("speechSynthesis" in window ? "יש" : "אין"),
+      "נוסה דרך: " + (lastSpeak || "-")
+    ].join("<br>");
+  };
   app.querySelector('[data-a="reset"]').onclick=()=>{ if(confirm("למחוק את כל ההתקדמות ולהתחיל מחדש?")){ S={score:{},wrong:{},days:[],placed:false,updated:""}; save(); go({name:"home"}); } };
 }
 
