@@ -61,6 +61,23 @@ h2{font-size:18px;margin:26px 0 10px}
 .lv:disabled{opacity:.55;cursor:default}
 .mode.review{margin-top:12px}
 .mode.review.due{border-color:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb, var(--sun) 35%, transparent)}
+.mode.gram{margin-top:12px}
+.rule{background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:14px 16px}
+.rule p{margin:0 0 8px}
+.rule ul{margin:0 0 8px;padding-inline-start:20px}
+.rule li{margin:4px 0}
+.wl.ex{flex-wrap:wrap}
+.wl.ex .en{flex-basis:100%;font-size:17px}
+.sent{font-size:24px;font-weight:600;line-height:1.5}
+.blank{display:inline-block;min-width:70px;border-bottom:3px solid var(--sun);margin:0 4px}
+.opt.sent-opt{font-size:17px;text-align:left}
+.sent-ans{font-size:20px;margin:6px 0}
+.built{min-height:58px;margin-top:14px;padding:8px;border:2px dashed var(--line);border-radius:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.built .ph{color:var(--muted);font-size:14px;font-family:"Rubik",sans-serif;direction:rtl;width:100%;text-align:center}
+.tiles{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;justify-content:center}
+.tile{background:var(--paper);border:2px solid var(--line);border-bottom-width:4px;border-radius:12px;padding:8px 12px;font-size:18px;font-weight:600}
+.built .tile{border-color:var(--field-2)}
+.btn:disabled{opacity:.5}
 .mode.next{margin-top:12px;border-color:var(--sun);background:var(--sun);color:#1C2B4B}
 .mode.next span{color:#1C2B4B}
 .weeks{display:grid;gap:10px}
@@ -191,7 +208,7 @@ function useLevel(n){ WEEKS = LEVELS[n-1].weeks; ALL = LEVEL_WORDS[n-1]; }
 const MASTER = 3, ROUND = 10;
 
 /* ---------- state + storage ---------- */
-const fresh = () => ({score:{}, wrong:{}, days:[], placed:false, placedLv:{}, unlocked:{}, level:1, seen:{}, forgot:{}, lastReview:"", updated:""});
+const fresh = () => ({score:{}, wrong:{}, days:[], placed:false, placedLv:{}, unlocked:{}, level:1, seen:{}, forgot:{}, lastReview:"", gscore:{}, gwrong:{}, gseen:{}, gunlocked:{}, updated:""});
 let S = fresh();
 const LS = "vocab100-progress";
 const API = "https://script.google.com/macros/s/AKfycbx7OlcWD9IdMyp_s0ngiI7V1r453A_nfY-pvUR0b-YUdtOmXxKqZTLJ193OyTaGN_16/exec";
@@ -208,6 +225,8 @@ function loadLocal(){ try{ const v = localStorage.getItem(LS); if(v) S = Object.
 function normalize(){
   S.placedLv = S.placedLv || {}; if(S.placed) S.placedLv[1] = true;
   S.seen = S.seen || {}; S.forgot = S.forgot || {}; S.lastReview = S.lastReview || "";
+  S.gscore = S.gscore || {}; S.gwrong = S.gwrong || {}; S.gseen = S.gseen || {}; S.gunlocked = S.gunlocked || {};
+  keepOpenUnits();
   S.unlocked = S.unlocked || {};
   S.level = S.level >= 1 && S.level <= LEVELS.length && isOpen(S.level) ? S.level : 1;
   keepOpenLevels();
@@ -222,7 +241,7 @@ function keepOpenLevels(){
 function setLevel(n){ S.level = n; useLevel(n); save(); go({name:"home"}); }
 function writeLocal(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
 function save(){
-  keepOpenLevels();
+  keepOpenLevels(); keepOpenUnits();
   S.updated = new Date().toISOString();
   writeLocal();
   pending = true;
@@ -253,10 +272,10 @@ async function pull(){
     const d = await r.json();
     if(d.error) throw new Error(d.error);
     if(d.updated && (!S.updated || d.updated > S.updated)){
-      S = {score:d.score||{}, wrong:d.wrong||{}, days:d.days||[], placed:!!d.placed, placedLv:d.placedLv||{}, unlocked:d.unlocked||{}, level:d.level||1, seen:d.seen||{}, forgot:d.forgot||{}, lastReview:d.lastReview||"", updated:d.updated};
+      S = Object.assign(fresh(), d);
       normalize();
       writeLocal();
-      if(view.name !== "play") render();
+      if(view.name !== "play" && view.name !== "gplay") render();
       setSync("ok");
     } else if(S.updated && S.updated !== d.updated){
       pending = true; push();
@@ -321,6 +340,10 @@ function render(){
   if(view.name==="play") return play();
   if(view.name==="result") return result();
   if(view.name==="parent") return parent();
+  if(view.name==="grammar") return grammarScreen();
+  if(view.name==="gunit") return gunitScreen();
+  if(view.name==="gplay") return gplay();
+  if(view.name==="gresult") return gresult();
 }
 
 function home(){
@@ -337,6 +360,7 @@ function home(){
   ${nextLevelNote(k)}
   ${!S.placedLv[S.level] ? `<button class="mode" style="margin-top:16px" data-a="place"><b>מבחן פתיחה</b><span>עוברים על כל 100 המילים ומסמנים מה כבר יודעים. לוקח כ-10 דקות.</span></button>`:""}
   ${reviewCard()}
+  ${grammarCard()}
   <h2>השבועות</h2>
   <div class="weeks">
     ${WEEKS.map(w=>{ const list=ALL.filter(x=>x.week===w.n), kk=known(list), p=Math.round(kk/list.length*100);
@@ -350,6 +374,7 @@ function home(){
   app.querySelectorAll("[data-w]").forEach(b=>b.onclick=()=>go({name:"week",w:+b.dataset.w}));
   app.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>setLevel(+b.dataset.l));
   const rv = app.querySelector('[data-a="review"]'); if(rv) rv.onclick=startReview;
+  app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"grammar"});
   const nx = app.querySelector('[data-a="next"]'); if(nx) nx.onclick=()=>setLevel(S.level+1);
   const pl = app.querySelector('[data-a="place"]'); if(pl) pl.onclick=()=>start("place", ALL);
   app.querySelector('[data-a="parent"]').onclick=()=>go({name:"parent"});
@@ -386,9 +411,10 @@ function weekScreen(){
 
 // Quiz/typing round: words not yet known (weakest first) plus a few known words
 // for review. When everything is known, the whole round is review.
-function pickRound(list){
-  const weak = shuffle(list.filter(x=>sc(x.en)<MASTER)).sort((a,b)=>sc(a.en)-sc(b.en));
-  const strong = shuffle(list.filter(x=>sc(x.en)>=MASTER));
+function pickRound(list){ return pickBy(list, x=>sc(x.en)); }
+function pickBy(list, score){
+  const weak = shuffle(list.filter(x=>score(x)<MASTER)).sort((a,b)=>score(a)-score(b));
+  const strong = shuffle(list.filter(x=>score(x)>=MASTER));
   if(!weak.length) return strong.slice(0, ROUND);
   const review = Math.min(strong.length, weak.length >= ROUND ? 2 : 3);
   return shuffle([...weak.slice(0, ROUND-review), ...strong.slice(0, review)]);
@@ -519,6 +545,243 @@ function result(){
   app.querySelector('[data-a="again"]').onclick=()=>go(v.back?{name:"week",w:v.back}:{name:"home"});
 }
 
+/* ---------- sentences & tenses ---------- */
+// Item types: fill (choose the missing word), choose (choose the correct sentence),
+// order (build the sentence from word tiles; alt = other accepted orders, d = distractor tile).
+const GRAMMAR = [
+ {"id":"ps","name":"הווה פשוט","short":"I play / He plays","rule":"משתמשים בהווה פשוט לדברים שקורים באופן קבוע: הרגלים, עובדות, ודברים שחוזרים על עצמם.","form":[["אני / אתה / אנחנו / הם","I play · You play · They play"],["הוא / היא (מוסיפים s)","He plays · She plays"],["שלילה","I don't play · He doesn't play"],["שאלה","Do you play? · Does he play?"]],"signals":"every day, always, usually, sometimes, never, on Mondays","ex":[["I play football every day.","אני משחק כדורגל כל יום."],["My sister reads books.","אחותי קוראת ספרים."],["He doesn't like cheese.","הוא לא אוהב גבינה."]],"items":[
+  {"t":"fill","s":"My brother ___ football every day.","he":"אח שלי משחק כדורגל כל יום.","a":"plays","o":["play","played","playing"]},
+  {"t":"fill","s":"We ___ to school by bus.","he":"אנחנו נוסעים לבית הספר באוטובוס.","a":"go","o":["goes","went","going"]},
+  {"t":"fill","s":"She ___ like vegetables.","he":"היא לא אוהבת ירקות.","a":"doesn't","o":["don't","isn't","didn't"]},
+  {"t":"fill","s":"___ you have homework today?","he":"יש לך שיעורי בית היום?","a":"Do","o":["Does","Are","Is"]},
+  {"t":"fill","s":"My parents always ___ coffee in the morning.","he":"ההורים שלי תמיד שותים קפה בבוקר.","a":"drink","o":["drinks","drank","drinking"]},
+  {"t":"fill","s":"The library ___ at eight o'clock.","he":"הספרייה נפתחת בשמונה.","a":"opens","o":["open","opened","opening"]},
+  {"t":"fill","s":"I never ___ my homework.","he":"אני אף פעם לא שוכח את שיעורי הבית שלי.","a":"forget","o":["forgets","forgot","forgetting"]},
+  {"t":"fill","s":"___ your cousin live in the city?","he":"בן הדוד שלך גר בעיר?","a":"Does","o":["Do","Is","Are"]},
+  {"t":"choose","he":"הוא אוהב פיצה.","a":"He likes pizza.","o":["He like pizza.","He liking pizza."]},
+  {"t":"choose","he":"אנחנו לא משחקים בחדר השינה.","a":"We don't play in the bedroom.","o":["We doesn't play in the bedroom.","We not play in the bedroom."]},
+  {"t":"choose","he":"החתול שלי ישן על הגג.","a":"My cat sleeps on the roof.","o":["My cat sleep on the roof.","My cat sleeping on the roof."]},
+  {"t":"choose","he":"האם היא עובדת בבית החולים?","a":"Does she work at the hospital?","o":["Do she work at the hospital?","Does she works at the hospital?"]},
+  {"t":"order","he":"אני קם מוקדם כל יום.","w":"I get up early every day","d":"gets","alt":["Every day I get up early"],"p":"."},
+  {"t":"order","he":"היא תמיד עוזרת לאמא שלה.","w":"She always helps her mother","d":"help","alt":[],"p":"."},
+  {"t":"order","he":"אנחנו לא אוכלים בשר.","w":"We don't eat meat","d":"doesn't","alt":[],"p":"."},
+  {"t":"order","he":"סבא וסבתא שלי גרים בכפר.","w":"My grandparents live in a village","d":"lives","alt":[],"p":"."},
+  {"t":"order","he":"אתה אוהב מוזיקה?","w":"Do you like music","d":"Does","alt":[],"p":"?"},
+  {"t":"order","he":"הוא הולך לספרייה בימי שני.","w":"He goes to the library on Mondays","d":"go","alt":["On Mondays he goes to the library"],"p":"."},
+  {"t":"order","he":"השיעור מתחיל בשמונה.","w":"The lesson starts at eight","d":"start","alt":[],"p":"."},
+  {"t":"order","he":"לפעמים הדוד שלי מביא לנו מתנות.","w":"Sometimes my uncle brings us gifts","d":"bring","alt":["My uncle sometimes brings us gifts"],"p":"."},
+  {"t":"order","he":"אני לא מבין את השאלה.","w":"I don't understand the question","d":"doesn't","alt":[],"p":"."},
+  {"t":"order","he":"איפה הוא גר?","w":"Where does he live","d":"do","alt":[],"p":"?"},
+  {"t":"order","he":"אחותי שותה מיץ בבוקר.","w":"My sister drinks juice in the morning","d":"drink","alt":["In the morning my sister drinks juice"],"p":"."},
+  {"t":"order","he":"הם תמיד מנצחים.","w":"They always win","d":"wins","alt":[],"p":"."}]},
+ {"id":"pc","name":"הווה מתמשך","short":"I am playing","rule":"משתמשים בהווה מתמשך לדבר שקורה עכשיו, ממש ברגע זה.","form":[["אני","I am playing"],["הוא / היא","He is playing · She is playing"],["אתה / אנחנו / הם","You are playing · They are playing"],["שלילה","I'm not playing · He isn't playing"],["שאלה","Are you playing? · Is she playing?"]],"signals":"now, right now, at the moment, today, Look!, Listen!","ex":[["I am reading a book now.","אני קורא ספר עכשיו."],["Look! The dog is running.","תראה! הכלב רץ."],["They aren't watching TV.","הם לא צופים בטלוויזיה."]],"items":[
+  {"t":"fill","s":"I ___ my homework now.","he":"אני מכין עכשיו את שיעורי הבית שלי.","a":"am doing","o":["do","is doing","did"]},
+  {"t":"fill","s":"She ___ a book at the moment.","he":"היא קוראת ספר כרגע.","a":"is reading","o":["reads","are reading","read"]},
+  {"t":"fill","s":"They ___ football in the park right now.","he":"הם משחקים כדורגל בפארק עכשיו.","a":"are playing","o":["play","is playing","played"]},
+  {"t":"fill","s":"Listen! My sister ___.","he":"תקשיב! אחותי שרה.","a":"is singing","o":["sings","are singing","sang"]},
+  {"t":"fill","s":"We ___ watching TV now.","he":"אנחנו לא צופים בטלוויזיה עכשיו.","a":"aren't","o":["isn't","don't","am not"]},
+  {"t":"fill","s":"___ you listening to me?","he":"אתה מקשיב לי?","a":"Are","o":["Is","Do","Am"]},
+  {"t":"fill","s":"Look! It ___.","he":"תראה! יורד גשם.","a":"is raining","o":["rains","are raining","rained"]},
+  {"t":"fill","s":"He usually walks to school, but today he ___ his bike.","he":"בדרך כלל הוא הולך ברגל לבית הספר, אבל היום הוא רוכב על האופניים.","a":"is riding","o":["rides","ride","rode"]},
+  {"t":"choose","he":"אני מחכה לך.","a":"I am waiting for you.","o":["I waiting for you.","I am wait for you."]},
+  {"t":"choose","he":"הם לא ישנים.","a":"They aren't sleeping.","o":["They don't sleeping.","They isn't sleeping."]},
+  {"t":"choose","he":"מה אתה עושה?","a":"What are you doing?","o":["What do you doing?","What you are doing?"]},
+  {"t":"choose","he":"אני משחק כדורגל כל יום.","a":"I play football every day.","o":["I am playing football every day.","I playing football every day."]},
+  {"t":"order","he":"אמא שלי מבשלת ארוחת ערב.","w":"My mother is cooking dinner","d":"cooks","alt":[],"p":"."},
+  {"t":"order","he":"אנחנו מחכים לאוטובוס.","w":"We are waiting for the bus","d":"is","alt":[],"p":"."},
+  {"t":"order","he":"תראה! החתול מטפס על העץ.","w":"Look! The cat is climbing the tree","d":"climbs","alt":[],"p":"."},
+  {"t":"order","he":"הוא לא ישן עכשיו.","w":"He isn't sleeping now","d":"doesn't","alt":[],"p":"."},
+  {"t":"order","he":"הם משחקים בחוץ?","w":"Are they playing outside","d":"Do","alt":[],"p":"?"},
+  {"t":"order","he":"אני לובש מעיל היום.","w":"I am wearing a jacket today","d":"wear","alt":["Today I am wearing a jacket"],"p":"."},
+  {"t":"order","he":"היא מדברת בטלפון עכשיו.","w":"She is talking on the phone now","d":"talks","alt":["Now she is talking on the phone"],"p":"."},
+  {"t":"order","he":"הילדים צוחקים.","w":"The children are laughing","d":"is","alt":[],"p":"."},
+  {"t":"order","he":"מה אתה אוכל?","w":"What are you eating","d":"do","alt":[],"p":"?"},
+  {"t":"order","he":"יורד שלג על ההר.","w":"It is snowing on the mountain","d":"snows","alt":[],"p":"."},
+  {"t":"order","he":"אני לא צופה בטלוויזיה.","w":"I am not watching TV","d":"don't","alt":[],"p":"."},
+  {"t":"order","he":"אבא שלי נוהג לעבודה עכשיו.","w":"My father is driving to work now","d":"drives","alt":["Now my father is driving to work"],"p":"."}]},
+ {"id":"im","name":"ציווי","short":"Open the door!","rule":"משתמשים בציווי כדי לבקש, להורות או להזהיר. מתחילים ישר בפועל, בלי I או you.","form":[["הוראה","Open the door!"],["שלילה (מתחילים ב-Don't)","Don't run!"],["בנימוס","Please sit down."],["ביחד (Let's)","Let's go!"]],"signals":"please · Let's · Don't","ex":[["Close the window, please.","סגור את החלון, בבקשה."],["Don't touch the oven!","אל תיגע בתנור!"],["Let's play outside.","בוא נשחק בחוץ."]],"items":[
+  {"t":"fill","s":"___ the door, please.","he":"פתח את הדלת, בבקשה.","a":"Open","o":["Opens","Opening","Opened"]},
+  {"t":"fill","s":"___ run in the hospital!","he":"אל תרוץ בבית החולים!","a":"Don't","o":["Not","Doesn't","No"]},
+  {"t":"fill","s":"___ go to the beach!","he":"בואו נלך לים!","a":"Let's","o":["Lets","Let","We"]},
+  {"t":"fill","s":"Please ___ quiet in the library.","he":"בבקשה תהיו בשקט בספרייה.","a":"be","o":["are","is","being"]},
+  {"t":"fill","s":"___ forget your homework!","he":"אל תשכח את שיעורי הבית!","a":"Don't","o":["Doesn't","Not","Didn't"]},
+  {"t":"fill","s":"___ your hands before dinner.","he":"שטוף את הידיים לפני ארוחת הערב.","a":"Wash","o":["Washes","Washing","Washed"]},
+  {"t":"fill","s":"Turn ___ at the corner.","he":"פנה שמאלה בפינה.","a":"left","o":["leave","lefts","leaving"]},
+  {"t":"fill","s":"Don't ___ late!","he":"אל תאחר!","a":"be","o":["is","are","being"]},
+  {"t":"choose","he":"שב, בבקשה.","a":"Sit down, please.","o":["You sitting down, please.","Sits down, please."]},
+  {"t":"choose","he":"אל תדאג!","a":"Don't worry!","o":["Not worry!","Doesn't worry!"]},
+  {"t":"choose","he":"בוא נאכל ארוחת צהריים.","a":"Let's eat lunch.","o":["Let's to eat lunch.","Lets eating lunch."]},
+  {"t":"choose","he":"אל תהיה עצוב.","a":"Don't be sad.","o":["Don't sad.","Not be sad."]},
+  {"t":"order","he":"בבקשה תסגור את החלון.","w":"Please close the window","d":"closes","alt":[],"p":"."},
+  {"t":"order","he":"אל תיגע בתנור!","w":"Don't touch the oven","d":"doesn't","alt":[],"p":"!"},
+  {"t":"order","he":"בוא נשחק בחוץ.","w":"Let's play outside","d":"plays","alt":[],"p":"."},
+  {"t":"order","he":"תסביר לי את השאלה.","w":"Explain the question to me","d":"explains","alt":[],"p":"."},
+  {"t":"order","he":"תביא את הספר שלך מחר.","w":"Bring your book tomorrow","d":"brought","alt":[],"p":"."},
+  {"t":"order","he":"אל תצעק בכיתה!","w":"Don't shout in class","d":"not","alt":[],"p":"!"},
+  {"t":"order","he":"חכה לי ליד הספרייה.","w":"Wait for me next to the library","d":"waits","alt":[],"p":"."},
+  {"t":"order","he":"בואו נחליט ביחד.","w":"Let's decide together","d":"decides","alt":[],"p":"."},
+  {"t":"order","he":"תהיה אדיב לשכנים שלך.","w":"Be kind to your neighbors","d":"are","alt":[],"p":"."},
+  {"t":"order","he":"אל תשכחו את הבקבוקים שלכם.","w":"Don't forget your bottles","d":"forgot","alt":[],"p":"."},
+  {"t":"order","he":"לך ישר ואז פנה ימינה.","w":"Go straight and then turn right","d":"goes","alt":[],"p":"."},
+  {"t":"order","he":"בבקשה תענה על השאלה.","w":"Please answer the question","d":"answers","alt":[],"p":"."}]},
+ {"id":"pa","name":"עבר פשוט","short":"I played / I went","rule":"משתמשים בעבר פשוט לדברים שקרו והסתיימו בעבר. אחרי didn't ו-Did הפועל חוזר לצורה הרגילה: I didn't go (ולא went).","form":[["פועל רגיל (מוסיפים ed)","play → played · finish → finished"],["פעלים חריגים","go → went · buy → bought"],["שלילה","I didn't go"],["שאלה","Did you go?"]],"signals":"yesterday, last week, ago, this morning, in 2020","ex":[["I played football yesterday.","שיחקתי כדורגל אתמול."],["We went to the beach last week.","הלכנו לים בשבוע שעבר."],["She didn't finish her homework.","היא לא סיימה את שיעורי הבית שלה."]],"items":[
+  {"t":"fill","s":"Yesterday I ___ football with my cousin.","he":"אתמול שיחקתי כדורגל עם בן הדוד שלי.","a":"played","o":["play","plays","am playing"]},
+  {"t":"fill","s":"We ___ to the airport last night.","he":"נסענו לשדה התעופה אתמול בלילה.","a":"went","o":["go","goed","going"]},
+  {"t":"fill","s":"She ___ a new jacket last week.","he":"היא קנתה מעיל חדש בשבוע שעבר.","a":"bought","o":["buyed","buys","buy"]},
+  {"t":"fill","s":"I ___ finish my homework yesterday.","he":"לא סיימתי את שיעורי הבית אתמול.","a":"didn't","o":["don't","doesn't","wasn't"]},
+  {"t":"fill","s":"___ you see the movie?","he":"ראית את הסרט?","a":"Did","o":["Do","Were","Are"]},
+  {"t":"fill","s":"He didn't ___ the game.","he":"הוא לא ניצח במשחק.","a":"win","o":["won","wins","winning"]},
+  {"t":"fill","s":"Two days ago we ___ our grandparents.","he":"לפני יומיים ביקרנו את סבא וסבתא.","a":"visited","o":["visit","visits","visiting"]},
+  {"t":"fill","s":"The exam ___ difficult.","he":"המבחן היה קשה.","a":"was","o":["were","is","did"]},
+  {"t":"choose","he":"שכחתי את המפתח שלי.","a":"I forgot my key.","o":["I forgeted my key.","I did forgot my key."]},
+  {"t":"choose","he":"הם לא הגיעו בזמן.","a":"They didn't arrive on time.","o":["They didn't arrived on time.","They not arrived on time."]},
+  {"t":"choose","he":"איפה היית אתמול?","a":"Where were you yesterday?","o":["Where was you yesterday?","Where did you was yesterday?"]},
+  {"t":"choose","he":"הוא הביא עוגה למסיבה.","a":"He brought a cake to the party.","o":["He bringed a cake to the party.","He brang a cake to the party."]},
+  {"t":"order","he":"אתמול הלכתי לספרייה.","w":"Yesterday I went to the library","d":"go","alt":["I went to the library yesterday"],"p":"."},
+  {"t":"order","he":"היא לא אכלה ארוחת בוקר.","w":"She didn't eat breakfast","d":"ate","alt":[],"p":"."},
+  {"t":"order","he":"קנית לחם?","w":"Did you buy bread","d":"bought","alt":[],"p":"?"},
+  {"t":"order","he":"בנינו בית עץ בשבוע שעבר.","w":"We built a tree house last week","d":"build","alt":["Last week we built a tree house"],"p":"."},
+  {"t":"order","he":"הוא שכח את התיק שלו בבית.","w":"He forgot his bag at home","d":"forget","alt":[],"p":"."},
+  {"t":"order","he":"המורה הסבירה את השיעור.","w":"The teacher explained the lesson","d":"explains","alt":[],"p":"."},
+  {"t":"order","he":"לא חיכינו הרבה זמן.","w":"We didn't wait long","d":"waited","alt":[],"p":"."},
+  {"t":"order","he":"הם היו נרגשים מאוד.","w":"They were very excited","d":"was","alt":[],"p":"."},
+  {"t":"order","he":"מתי הגעת הביתה?","w":"When did you come home","d":"came","alt":[],"p":"?"},
+  {"t":"order","he":"לפני שבוע ראיתי את השכן שלנו.","w":"A week ago I saw our neighbor","d":"see","alt":["I saw our neighbor a week ago"],"p":"."},
+  {"t":"order","he":"היא החליטה לשאול ספר.","w":"She decided to borrow a book","d":"decides","alt":[],"p":"."},
+  {"t":"order","he":"אתמול לא היה לי זמן.","w":"Yesterday I didn't have time","d":"had","alt":["I didn't have time yesterday"],"p":"."}]}];
+const G_UNLOCK = 0.8; // share of a unit's sentences known before the next unit opens
+GRAMMAR.forEach(u => u.items.forEach((it, i) => { it.id = u.id + ":" + i; }));
+const gsc = it => S.gscore[it.id] || 0;
+const gknown = u => u.items.filter(it => gsc(it) >= MASTER).length;
+const gneed = u => Math.ceil(u.items.length * G_UNLOCK);
+// S.gunlocked[n] works like S.unlocked for levels: true/false = set by a parent or kept open, unset = automatic.
+function gOpen(n){ return n===0 || (S.gunlocked[n] ?? gknown(GRAMMAR[n-1]) >= gneed(GRAMMAR[n-1])); }
+function keepOpenUnits(){
+  for(let n=1; n<GRAMMAR.length; n++)
+    if(S.gunlocked[n]===undefined && gknown(GRAMMAR[n-1]) >= gneed(GRAMMAR[n-1])) S.gunlocked[n] = true;
+}
+function topUnit(){ let n=0; while(n+1<GRAMMAR.length && gOpen(n+1)) n++; return n; }
+function gbump(it, ok){
+  S.gscore[it.id] = ok ? Math.min(MASTER, gsc(it)+1) : 0;
+  if(!ok) S.gwrong[it.id] = (S.gwrong[it.id]||0)+1;
+  const d = today();
+  S.gseen[it.id] = d;
+  if(!S.days.includes(d)) S.days.push(d);
+  save();
+}
+function gRound(n){
+  const items = pickBy(GRAMMAR[n].items, gsc);
+  // Bring back sentences from earlier units: not known first, then least recently practiced.
+  const rank = it => gsc(it) >= MASTER ? 1 : 0;
+  const old = shuffle(GRAMMAR.slice(0, n).flatMap(u=>u.items))
+    .sort((a,b)=> rank(a)-rank(b) || (S.gseen[a.id]||"").localeCompare(S.gseen[b.id]||"")).slice(0, OLD_PER_ROUND);
+  return shuffle([...items, ...old]);
+}
+const gText = it => it.t==="order" ? it.w + it.p : it.t==="fill" ? it.s.replace("___", it.a) : it.a;
+const tileText = (t, i) => i===0 && t!=="I" && !t.startsWith("I'") ? t.charAt(0).toLowerCase() + t.slice(1) : t;
+const unitOf = it => GRAMMAR.find(u => u.items.includes(it));
+
+function grammarCard(){
+  const n = topUnit(), u = GRAMMAR[n];
+  return `<button class="mode gram" data-a="grammar"><b>משפטים וזמנים ✍️</b><span>יחידה ${n+1}: ${u.name} · ${gknown(u)} מתוך ${u.items.length} משפטים</span></button>`;
+}
+
+function grammarScreen(){
+  app.innerHTML = `
+  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">משפטים וזמנים</span></div>
+  <p class="note">כל יחידה מלמדת זמן אחד. יחידה נפתחת כשיודעים ${Math.round(G_UNLOCK*100)}% מהמשפטים ביחידה הקודמת.</p>
+  <div class="weeks">${GRAMMAR.map((u,n)=>{ const o=gOpen(n), k=gknown(u), p=Math.round(k/u.items.length*100);
+    return `<button class="week ${k===u.items.length?'done':''}" data-g="${n}" ${o?'':'disabled'}>
+      <span class="num">${o?n+1:'🔒'}</span>
+      <span class="t"><b>${u.name} · <span class="en">${esc(u.short)}</span></b><span>${k} מתוך ${u.items.length} משפטים</span><span class="mini"><i style="width:${p}%"></i></span></span>
+    </button>`; }).join("")}</div>`;
+  app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
+  app.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>go({name:"gunit", n:+b.dataset.g}));
+}
+
+function gunitScreen(){
+  const n=view.n, u=GRAMMAR[n];
+  app.innerHTML = `
+  <div class="top"><button class="back" data-a="grammar">חזרה</button><span class="title">יחידה ${n+1}: ${u.name}</span></div>
+  <div class="rule">
+    <p>${esc(u.rule)}</p>
+    <ul>${u.form.map(([label, ex])=>`<li>${esc(label)}: <span class="en">${esc(ex)}</span></li>`).join("")}</ul>
+    <p class="hint">מילים שרומזות על הזמן:<br><span class="en">${esc(u.signals)}</span></p>
+  </div>
+  <h2>דוגמאות</h2>
+  <div class="wordlist">${u.ex.map(([en,he],i)=>`<div class="wl ex"><span class="en">${esc(en)}</span><span>${esc(he)}</span><button class="mk" data-say="${i}" aria-label="השמע">🔊</button></div>`).join("")}</div>
+  <button class="btn go wide" data-a="gpractice">תרגול</button>
+  <p class="note">${gknown(u)} מתוך ${u.items.length} משפטים נתפסו. כל משפט צריך 3 תשובות נכונות.</p>`;
+  app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"grammar"});
+  app.querySelectorAll("[data-say]").forEach(b=>b.onclick=()=>speak(u.ex[+b.dataset.say][0]));
+  app.querySelector('[data-a="gpractice"]').onclick=()=>go({name:"gplay", n, items:gRound(n), i:0, right:0, missed:[]});
+}
+
+function gplay(){
+  const v=view, it=v.items[v.i];
+  if(!it) return go({name:"gresult", n:v.n, right:v.right, total:v.items.length, missed:v.missed});
+  const u = unitOf(it);
+  const head = `<div class="top"><button class="back" data-a="quit">יציאה</button><span class="title">${u.name}</span></div>
+  <div class="progress">${v.i+1} מתוך ${v.items.length}</div>`;
+  let body = "";
+  if(it.t==="fill"){
+    const [pre, post] = it.s.split("___");
+    v.opts = v.opts || shuffle([it.a, ...it.o]);
+    body = `<div class="card pop"><div class="sent en">${esc(pre)}<span class="blank">&nbsp;</span>${esc(post)}</div><div class="hint">${esc(it.he)}</div></div>
+      <div class="opts">${v.opts.map((o,k)=>`<button class="opt en" data-k="${k}">${esc(o)}</button>`).join("")}</div>`;
+  } else if(it.t==="choose"){
+    v.opts = v.opts || shuffle([it.a, ...it.o]);
+    body = `<div class="card pop"><div class="he">${esc(it.he)}</div><div class="hint">בחר את המשפט הנכון</div></div>
+      <div class="opts">${v.opts.map((o,k)=>`<button class="opt en sent-opt" data-k="${k}">${esc(o)}</button>`).join("")}</div>`;
+  } else {
+    if(!v.tiles){ const words = it.w.split(" "); v.tiles = shuffle([...words.map(tileText), it.d]).map((t,k)=>({t,k})); v.built = []; }
+    body = `<div class="card pop"><div class="he">${esc(it.he)}</div><div class="hint">סדר את המילים למשפט באנגלית</div></div>
+      <div class="built en" id="built">${v.built.map(k=>`<button class="tile" data-b="${k}">${esc(v.tiles[k].t)}</button>`).join("") || '<span class="ph">לחץ על המילים לפי הסדר</span>'}</div>
+      <div class="tiles en">${v.tiles.map(x=>v.built.includes(x.k)?'':`<button class="tile" data-t="${x.k}">${esc(x.t)}</button>`).join("")}</div>
+      <button class="btn go wide" data-a="check" ${v.built.length?'':'disabled'}>בדיקה</button>`;
+  }
+  app.innerHTML = head + body + `<div class="feedback" id="fb"></div>`;
+  app.querySelector('[data-a="quit"]').onclick=()=>go({name:"gunit", n:v.n});
+
+  const finish = ok => {
+    gbump(it, ok); if(ok) v.right++; else v.missed.push(it);
+    const fb=document.getElementById("fb");
+    fb.className="feedback "+(ok?"ok":"bad");
+    fb.innerHTML = (ok ? "נכון! " : "התשובה הנכונה: ") + `<div class="en sent-ans">${esc(gText(it))}</div><button class="btn go wide" data-a="next">הבא</button>`;
+    speak(gText(it));
+    app.querySelectorAll(".opt,.tile,[data-a=check]").forEach(b=>b.disabled=true);
+    app.querySelector('[data-a="next"]').onclick=next;
+  };
+  if(it.t==="fill" || it.t==="choose"){
+    app.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{
+      const pick=v.opts[+b.dataset.k], ok = pick===it.a;
+      app.querySelectorAll(".opt").forEach((bb,k)=>{ if(v.opts[k]===it.a) bb.classList.add("right"); });
+      if(!ok) b.classList.add("wrong");
+      finish(ok);
+    });
+  } else {
+    app.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{ v.built.push(+b.dataset.t); render(); });
+    app.querySelectorAll("[data-b]").forEach(b=>b.onclick=()=>{ v.built = v.built.filter(k=>k!==+b.dataset.b); render(); });
+    app.querySelector('[data-a="check"]').onclick=()=>{
+      const said = v.built.map(k=>v.tiles[k].t).join(" ").toLowerCase();
+      finish([it.w, ...it.alt].some(a=>a.toLowerCase()===said));
+    };
+  }
+  function next(){ if(view!==v) return; v.i++; v.opts=null; v.tiles=null; v.built=null; render(); window.scrollTo(0,0); }
+}
+
+function gresult(){
+  const v=view;
+  app.innerHTML = `
+  <div class="result">
+    <div class="n">${v.right}/${v.total}</div>
+    <p>${v.right===v.total ? "מושלם! כל המשפטים נכונים." : v.right/v.total>=.7 ? "יפה מאוד! עוד קצת תרגול וזה שלך." : "התחלה טובה. כדאי לקרוא שוב את ההסבר ולתרגל עוד סבב."}</p>
+    ${v.missed.length?`<h2>משפטים לחזרה</h2><div class="wordlist">${v.missed.map(it=>`<div class="wl ex"><span class="en">${esc(gText(it))}</span><span>${esc(it.he)}</span></div>`).join("")}</div>`:""}
+    <button class="btn go wide" data-a="again">חזרה ליחידה</button>
+  </div>`;
+  app.querySelector('[data-a="again"]').onclick=()=>go({name:"gunit", n:v.n});
+}
+
 function parent(){
   const hard = Object.entries(S.wrong).sort((a,b)=>b[1]-a[1]).slice(0,15)
     .map(([en,n])=>{ const x=EVERY.find(w=>w.en===en); return x?{...x,n}:null; }).filter(Boolean);
@@ -539,6 +802,11 @@ function parent(){
   </div>
   <p class="note">${S.level>1 ? (S.lastReview ? `חזרה אחרונה על שלבים קודמים: ${S.lastReview.split("-").reverse().join("/")}. ` : "עוד לא נעשתה חזרה על שלבים קודמים. ") : ""}"נשכחו" = מילים שכבר ידע, טעה בהן, ועוד לא למד מחדש.</p>
   <p class="note">שלב חדש נפתח כשיודעים ${UNLOCK} מילים מהשלב הקודם. אפשר גם לפתוח או לסגור שלב ידנית. שלב שנסגר ייפתח שוב לבד כשיגיע ל-${UNLOCK} מילים בשלב הקודם (אם כבר עבר את זה, הוא יישאר סגור עד שתפתח אותו).</p>
+  <h2>משפטים וזמנים</h2>
+  <div class="wordlist">
+    ${GRAMMAR.map((u,n)=>{ const o=gOpen(n);
+      return `<div class="wl"><span>${n+1}. ${u.name}${o?'':' 🔒'}</span><b>${gknown(u)} / ${u.items.length}</b>${n===0?'':o?`<button class="mk" data-gc="${n}">סגור</button>`:`<button class="mk" data-go="${n}">פתח</button>`}</div>`; }).join("")}
+  </div>
   <h2>מילים שהכי קשות לו</h2>
   ${hard.length?`<div class="wordlist">${hard.map(x=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="note" style="margin:0">${x.n} טעויות</span></div>`).join("")}</div>
   <p class="note">את המילים האלה כדאי לשלב השבוע ב"מילה של היום" ובשיחה.</p>`:`<p class="note">עוד אין טעויות רשומות.</p>`}
@@ -560,6 +828,16 @@ function parent(){
     ].join("<br>");
   };
   app.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.u; if(confirm(`לפתוח את שלב ${n} עכשיו?`)){ S.unlocked[n]=true; save(); render(); } });
+  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.go; if(confirm(`לפתוח את יחידה ${n+1} עכשיו?`)){ S.gunlocked[n]=true; save(); render(); } });
+  app.querySelectorAll("[data-gc]").forEach(b=>b.onclick=()=>{
+    const n=+b.dataset.gc, u=GRAMMAR[n];
+    if(!confirm(`לסגור את יחידה ${n+1}?`)) return;
+    if(confirm(`למחוק גם את ההתקדמות ביחידה ${n+1}? כדאי אם רק בדקת אותה.`))
+      u.items.forEach(it=>{ delete S.gscore[it.id]; delete S.gwrong[it.id]; delete S.gseen[it.id]; });
+    delete S.gunlocked[n];
+    if(gOpen(n)) S.gunlocked[n]=false;
+    save(); render();
+  });
   app.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{
     const n=+b.dataset.c;
     if(!confirm(`לסגור את שלב ${n}?`)) return;
