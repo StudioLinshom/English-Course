@@ -215,7 +215,7 @@ function streak(){
   for(;;){ const k=d.toISOString().slice(0,10); if(S.days.includes(k)){n++; d.setDate(d.getDate()-1);} else break; }
   return n;
 }
-function speak(t){ try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(t); u.lang="en-US"; u.rate=.85; speechSynthesis.speak(u);}catch(e){} }
+function speak(t){ if(window.AndroidTTS){ try{ AndroidTTS.speak(t); }catch(e){} return; } try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(t); u.lang="en-US"; u.rate=.85; speechSynthesis.speak(u);}catch(e){} }
 const shuffle = a => { a=[...a]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const app = document.getElementById("app");
