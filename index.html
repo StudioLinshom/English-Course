@@ -55,6 +55,12 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--sun);outline-of
 .stats{display:flex;gap:18px;margin-top:12px;font-size:15px;opacity:.95}
 
 h2{font-size:18px;margin:26px 0 10px}
+.levels{display:flex;gap:8px;overflow-x:auto;margin-top:14px;padding-bottom:4px}
+.lv{flex:none;background:var(--paper);border:2px solid var(--line);border-radius:99px;padding:6px 14px;font-size:15px;font-weight:600}
+.lv.cur{background:var(--field);border-color:var(--field);color:#fff}
+.lv:disabled{opacity:.55;cursor:default}
+.mode.next{margin-top:12px;border-color:var(--sun);background:var(--sun);color:#1C2B4B}
+.mode.next span{color:#1C2B4B}
 .weeks{display:grid;gap:10px}
 .week{display:flex;align-items:center;gap:14px;background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:12px 14px;text-align:right;width:100%}
 .week .num{flex:none;width:42px;height:42px;border-radius:12px;background:var(--chalk);display:grid;place-items:center;font-family:"Fredoka",sans-serif;font-weight:700;font-size:20px;color:var(--field)}
@@ -127,20 +133,64 @@ input.type{width:100%;margin-top:14px;padding:14px;font-size:24px;border-radius:
 <div class="wrap" id="app"></div>
 
 <script>
-const WEEKS = [
- {n:1,name:"בית ומשפחה",words:[["kitchen","מטבח"],["bedroom","חדר שינה"],["bathroom","חדר רחצה"],["living room","סלון"],["stairs","מדרגות"],["roof","גג"],["neighbor","שכן"],["parents","הורים"],["grandparents","סבא וסבתא"],["cousin","בן/בת דוד"],["aunt","דודה"],["uncle","דוד"],["together","ביחד"]]},
- {n:2,name:"פעלים",words:[["bring","להביא","brought"],["buy","לקנות","bought"],["build","לבנות","built"],["choose","לבחור","chose"],["forget","לשכוח","forgot"],["remember","לזכור","remembered"],["explain","להסביר","explained"],["borrow","לשאול (חפץ)","borrowed"],["carry","לסחוב","carried"],["finish","לסיים","finished"],["wait","לחכות","waited"],["win","לנצח","won"],["lose","להפסיד","lost"],["decide","להחליט","decided"],["believe","להאמין","believed"]]},
- {n:3,name:"תארים ורגשות",words:[["angry","כועס"],["afraid","מפחד"],["bored","משועמם"],["proud","גאה"],["tired","עייף"],["worried","מודאג"],["excited","נרגש"],["surprised","מופתע"],["quiet","שקט"],["loud","רועש"],["dangerous","מסוכן"],["easy","קל"],["difficult","קשה"],["important","חשוב"]]},
- {n:4,name:"בית ספר וזמן",words:[["lesson","שיעור"],["homework","שיעורי בית"],["exam","מבחן"],["mistake","טעות"],["question","שאלה"],["answer","תשובה"],["break","הפסקה"],["early","מוקדם"],["late","מאוחר"],["always","תמיד"],["never","אף פעם"],["sometimes","לפעמים"],["yesterday","אתמול"],["tomorrow","מחר"]]},
- {n:5,name:"אוכל וקניות",words:[["bread","לחם"],["cheese","גבינה"],["vegetables","ירקות"],["fruit","פרי"],["meat","בשר"],["bottle","בקבוק"],["hungry","רעב"],["thirsty","צמא"],["delicious","טעים מאוד"],["cheap","זול"],["expensive","יקר"],["money","כסף"],["price","מחיר"],["enough","מספיק"]]},
- {n:6,name:"מקומות וכיוונים",words:[["city","עיר"],["village","כפר"],["street","רחוב"],["hospital","בית חולים"],["library","ספרייה"],["airport","שדה תעופה"],["beach","חוף"],["left","שמאלה"],["right","ימינה"],["straight","ישר"],["near","קרוב"],["far","רחוק"],["behind","מאחורי"],["between","בין"],["next to","ליד"]]},
- {n:7,name:"מילות קישור ושאלה",words:[["because","כי / בגלל"],["but","אבל"],["so","אז / לכן"],["then","ואז"],["also","גם"],["if","אם"],["until","עד"],["before","לפני"],["after","אחרי"],["when","מתי / כאשר"],["where","איפה"],["why","למה"],["how","איך"],["which","איזה"],["who","מי"]]}
+const LEVELS = [
+ {n:1, weeks:[
+  {n:1,name:"בית ומשפחה",words:[["kitchen","מטבח"],["bedroom","חדר שינה"],["bathroom","חדר רחצה"],["living room","סלון"],["stairs","מדרגות"],["roof","גג"],["neighbor","שכן"],["parents","הורים"],["grandparents","סבא וסבתא"],["cousin","בן/בת דוד"],["aunt","דודה"],["uncle","דוד"],["together","ביחד"]]},
+  {n:2,name:"פעלים",words:[["bring","להביא","brought"],["buy","לקנות","bought"],["build","לבנות","built"],["choose","לבחור","chose"],["forget","לשכוח","forgot"],["remember","לזכור","remembered"],["explain","להסביר","explained"],["borrow","לשאול (חפץ)","borrowed"],["carry","לסחוב","carried"],["finish","לסיים","finished"],["wait","לחכות","waited"],["win","לנצח","won"],["lose","להפסיד","lost"],["decide","להחליט","decided"],["believe","להאמין","believed"]]},
+  {n:3,name:"תארים ורגשות",words:[["angry","כועס"],["afraid","מפחד"],["bored","משועמם"],["proud","גאה"],["tired","עייף"],["worried","מודאג"],["excited","נרגש"],["surprised","מופתע"],["quiet","שקט"],["loud","רועש"],["dangerous","מסוכן"],["easy","קל"],["difficult","קשה"],["important","חשוב"]]},
+  {n:4,name:"בית ספר וזמן",words:[["lesson","שיעור"],["homework","שיעורי בית"],["exam","מבחן"],["mistake","טעות"],["question","שאלה"],["answer","תשובה"],["break","הפסקה"],["early","מוקדם"],["late","מאוחר"],["always","תמיד"],["never","אף פעם"],["sometimes","לפעמים"],["yesterday","אתמול"],["tomorrow","מחר"]]},
+  {n:5,name:"אוכל וקניות",words:[["bread","לחם"],["cheese","גבינה"],["vegetables","ירקות"],["fruit","פרי"],["meat","בשר"],["bottle","בקבוק"],["hungry","רעב"],["thirsty","צמא"],["delicious","טעים מאוד"],["cheap","זול"],["expensive","יקר"],["money","כסף"],["price","מחיר"],["enough","מספיק"]]},
+  {n:6,name:"מקומות וכיוונים",words:[["city","עיר"],["village","כפר"],["street","רחוב"],["hospital","בית חולים"],["library","ספרייה"],["airport","שדה תעופה"],["beach","חוף"],["left","שמאלה"],["right","ימינה"],["straight","ישר"],["near","קרוב"],["far","רחוק"],["behind","מאחורי"],["between","בין"],["next to","ליד"]]},
+  {n:7,name:"מילות קישור ושאלה",words:[["because","כי / בגלל"],["but","אבל"],["so","אז / לכן"],["then","ואז"],["also","גם"],["if","אם"],["until","עד"],["before","לפני"],["after","אחרי"],["when","מתי / כאשר"],["where","איפה"],["why","למה"],["how","איך"],["which","איזה"],["who","מי"]]}
+ ]},
+ {n:2, weeks:[
+  {n:1,name:"גוף ובריאות",words:[["head", "ראש"],["shoulder", "כתף"],["knee", "ברך"],["finger", "אצבע"],["tooth", "שן"],["stomach", "בטן"],["back", "גב"],["sick", "חולה"],["healthy", "בריא"],["medicine", "תרופה"],["doctor", "רופא"],["pain", "כאב"],["fever", "חום (מחלה)"],["hurt", "לכאוב / לפגוע", "hurt"]]},
+  {n:2,name:"פעלים",words:[["begin", "להתחיל", "began"],["catch", "לתפוס", "caught"],["fall", "ליפול", "fell"],["feel", "להרגיש", "felt"],["find", "למצוא", "found"],["hear", "לשמוע", "heard"],["hold", "להחזיק", "held"],["keep", "לשמור", "kept"],["leave", "לעזוב", "left"],["meet", "לפגוש", "met"],["pay", "לשלם", "paid"],["send", "לשלוח", "sent"],["show", "להראות", "showed"],["spend", "להוציא (כסף) / להעביר (זמן)", "spent"],["teach", "ללמד", "taught"],["understand", "להבין", "understood"]]},
+  {n:3,name:"טבע ומזג אוויר",words:[["weather", "מזג אוויר"],["cloud", "ענן"],["rain", "גשם"],["snow", "שלג"],["wind", "רוח"],["storm", "סערה"],["sky", "שמיים"],["sea", "ים"],["river", "נהר"],["forest", "יער"],["mountain", "הר"],["desert", "מדבר"],["island", "אי"],["warm", "חמים"]]},
+  {n:4,name:"זמן ותדירות",words:[["minute", "דקה"],["hour", "שעה"],["month", "חודש"],["year", "שנה"],["weekend", "סוף שבוע"],["soon", "בקרוב"],["already", "כבר"],["still", "עדיין"],["again", "שוב"],["often", "לעיתים קרובות"],["usually", "בדרך כלל"],["later", "מאוחר יותר"],["ago", "לפני (זמן)"],["during", "במהלך"]]},
+  {n:5,name:"בגדים ותחביבים",words:[["clothes", "בגדים"],["shirt", "חולצה"],["pants", "מכנסיים"],["shoes", "נעליים"],["jacket", "מעיל"],["hat", "כובע"],["wear", "ללבוש", "wore"],["hobby", "תחביב"],["game", "משחק"],["team", "קבוצה"],["player", "שחקן"],["practice", "לתרגל / אימון", "practiced"],["music", "מוזיקה"],["draw", "לצייר", "drew"]]},
+  {n:6,name:"תארים",words:[["beautiful", "יפה"],["ugly", "מכוער"],["strong", "חזק"],["weak", "חלש"],["fast", "מהיר"],["slow", "איטי"],["heavy", "כבד"],["empty", "ריק"],["full", "מלא"],["clean", "נקי"],["dirty", "מלוכלך"],["rich", "עשיר"],["poor", "עני"],["famous", "מפורסם"]]},
+  {n:7,name:"אנשים ועבודה",words:[["job", "עבודה (משרה)"],["worker", "עובד"],["farmer", "חקלאי"],["driver", "נהג"],["cook", "לבשל", "cooked"],["nurse", "אח / אחות"],["soldier", "חייל"],["pilot", "טייס"],["artist", "אמן"],["scientist", "מדען"],["writer", "סופר"],["office", "משרד"],["factory", "מפעל"],["earn", "להרוויח", "earned"]]}
+ ]},
+ {n:3, weeks:[
+  {n:1,name:"בעלי חיים",words:[["animal", "בעל חיים"],["bird", "ציפור"],["horse", "סוס"],["cow", "פרה"],["sheep", "כבשה"],["chicken", "תרנגולת"],["mouse", "עכבר"],["rabbit", "ארנב"],["snake", "נחש"],["lion", "אריה"],["monkey", "קוף"],["bear", "דוב"],["wing", "כנף"],["tail", "זנב"]]},
+  {n:2,name:"פעלים",words:[["become", "להפוך ל־ / להיות", "became"],["throw", "לזרוק", "threw"],["steal", "לגנוב", "stole"],["grow", "לגדול", "grew"],["hide", "להתחבא / להסתיר", "hid"],["lend", "להשאיל", "lent"],["sell", "למכור", "sold"],["tell", "לספר / להגיד", "told"],["think", "לחשוב", "thought"],["fly", "לעוף / לטוס", "flew"],["drive", "לנהוג", "drove"],["ride", "לרכוב", "rode"],["shout", "לצעוק", "shouted"],["laugh", "לצחוק", "laughed"],["cry", "לבכות", "cried"],["travel", "לנסוע / לטייל", "traveled"]]},
+  {n:3,name:"חפצים בבית",words:[["furniture", "רהיטים"],["sofa", "ספה"],["shelf", "מדף"],["mirror", "מראה"],["drawer", "מגירה"],["blanket", "שמיכה"],["pillow", "כרית"],["key", "מפתח"],["lock", "מנעול"],["towel", "מגבת"],["soap", "סבון"],["fridge", "מקרר"],["oven", "תנור"],["cup", "ספל"]]},
+  {n:4,name:"תחבורה ונסיעות",words:[["ticket", "כרטיס"],["trip", "טיול"],["journey", "מסע"],["passenger", "נוסע"],["station", "תחנה"],["train", "רכבת"],["plane", "מטוס"],["ship", "ספינה"],["bicycle", "אופניים"],["traffic", "תנועה (בכביש)"],["map", "מפה"],["suitcase", "מזוודה"],["arrive", "להגיע", "arrived"],["visit", "לבקר", "visited"]]},
+  {n:5,name:"תכונות אופי",words:[["kind", "אדיב"],["brave", "אמיץ"],["lazy", "עצלן"],["honest", "כן / ישר"],["polite", "מנומס"],["rude", "גס רוח"],["shy", "ביישן"],["funny", "מצחיק"],["smart", "חכם"],["jealous", "מקנא"],["lonely", "בודד"],["nervous", "לחוץ"],["calm", "רגוע"],["curious", "סקרן"]]},
+  {n:6,name:"תקשורת ושפה",words:[["message", "הודעה"],["call", "להתקשר", "called"],["screen", "מסך"],["password", "סיסמה"],["website", "אתר אינטרנט"],["download", "להוריד (קובץ)", "downloaded"],["search", "לחפש", "searched"],["news", "חדשות"],["letter", "מכתב"],["story", "סיפור"],["word", "מילה"],["language", "שפה"],["sentence", "משפט"],["speak", "לדבר", "spoke"]]},
+  {n:7,name:"מילים שימושיות",words:[["every", "כל"],["each", "כל אחד"],["both", "שניהם"],["other", "אחר"],["another", "עוד אחד"],["same", "אותו דבר / זהה"],["different", "שונה"],["only", "רק"],["almost", "כמעט"],["maybe", "אולי"],["really", "באמת"],["without", "בלי"],["through", "דרך"],["against", "נגד"]]}
+ ]},
+ {n:4, weeks:[
+  {n:1,name:"לימודים",words:[["subject", "מקצוע (בבית ספר)"],["math", "מתמטיקה"],["science", "מדעים"],["history", "היסטוריה"],["class", "כיתה"],["notebook", "מחברת"],["eraser", "מחק"],["ruler", "סרגל"],["page", "עמוד"],["dictionary", "מילון"],["student", "תלמיד"],["principal", "מנהל בית הספר"],["grade", "ציון"],["learn", "ללמוד", "learned"]]},
+  {n:2,name:"פעלים",words:[["agree", "להסכים", "agreed"],["allow", "להרשות", "allowed"],["change", "לשנות", "changed"],["hope", "לקוות", "hoped"],["prepare", "להכין", "prepared"],["promise", "להבטיח", "promised"],["protect", "להגן", "protected"],["repeat", "לחזור על", "repeated"],["save", "לחסוך / להציל", "saved"],["share", "לשתף / לחלוק", "shared"],["try", "לנסות", "tried"],["worry", "לדאוג", "worried"],["follow", "לעקוב / ללכת אחרי", "followed"],["happen", "לקרות", "happened"],["invite", "להזמין", "invited"],["pull", "למשוך", "pulled"]]},
+  {n:3,name:"בעיר",words:[["store", "חנות"],["market", "שוק"],["post office", "דואר"],["museum", "מוזיאון"],["park", "פארק"],["bridge", "גשר"],["corner", "פינה"],["building", "בניין"],["crowd", "קהל"],["sign", "שלט"],["square", "כיכר"],["pharmacy", "בית מרקחת"],["restaurant", "מסעדה"],["police station", "תחנת משטרה"]]},
+  {n:4,name:"ארוחות",words:[["breakfast", "ארוחת בוקר"],["lunch", "ארוחת צהריים"],["dinner", "ארוחת ערב"],["meal", "ארוחה"],["soup", "מרק"],["salad", "סלט"],["rice", "אורז"],["egg", "ביצה"],["sugar", "סוכר"],["salt", "מלח"],["butter", "חמאה"],["juice", "מיץ"],["sweet", "מתוק"],["sour", "חמוץ"]]},
+  {n:5,name:"גדלים וכמויות",words:[["huge", "ענק"],["tiny", "קטנטן"],["wide", "רחב"],["narrow", "צר"],["deep", "עמוק"],["high", "גבוה"],["low", "נמוך"],["half", "חצי"],["pair", "זוג"],["piece", "חתיכה"],["few", "מעט"],["most", "רוב"],["less", "פחות"],["whole", "שלם"]]},
+  {n:6,name:"אירועים וזמן",words:[["birthday", "יום הולדת"],["holiday", "חג"],["party", "מסיבה"],["gift", "מתנה"],["wedding", "חתונה"],["vacation", "חופשה"],["celebrate", "לחגוג", "celebrated"],["event", "אירוע"],["moment", "רגע"],["future", "עתיד"],["past", "עבר"],["century", "מאה (שנים)"],["date", "תאריך"],["calendar", "לוח שנה"]]},
+  {n:7,name:"תארים",words:[["true", "נכון / אמיתי"],["false", "לא נכון"],["possible", "אפשרי"],["impossible", "בלתי אפשרי"],["ready", "מוכן"],["busy", "עסוק"],["free", "חופשי / חינם"],["safe", "בטוח"],["strange", "מוזר"],["normal", "רגיל"],["special", "מיוחד"],["popular", "פופולרי"],["simple", "פשוט"],["terrible", "נורא"]]}
+ ]},
+ {n:5, weeks:[
+  {n:1,name:"טבע וסביבה",words:[["earth", "כדור הארץ"],["world", "עולם"],["nature", "טבע"],["environment", "סביבה"],["plant", "צמח"],["flower", "פרח"],["grass", "דשא"],["leaf", "עלה"],["stone", "אבן"],["sand", "חול"],["air", "אוויר"],["fire", "אש"],["ice", "קרח"],["wood", "עץ (חומר)"]]},
+  {n:2,name:"פעלים",words:[["bite", "לנשוך", "bit"],["blow", "לנשוף", "blew"],["dig", "לחפור", "dug"],["feed", "להאכיל", "fed"],["fight", "להילחם / לריב", "fought"],["forgive", "לסלוח", "forgave"],["freeze", "לקפוא", "froze"],["hang", "לתלות", "hung"],["shake", "לנער / לרעוד", "shook"],["shoot", "לירות", "shot"],["sink", "לשקוע / לטבוע", "sank"],["swing", "להתנדנד", "swung"],["tear", "לקרוע", "tore"],["wake", "להתעורר", "woke"],["bend", "לכופף", "bent"],["lead", "להוביל", "led"]]},
+  {n:3,name:"מחשבות ורגשות",words:[["idea", "רעיון"],["dream", "חלום"],["fear", "פחד"],["luck", "מזל"],["secret", "סוד"],["truth", "אמת"],["lie", "שקר / לשקר"],["joke", "בדיחה"],["memory", "זיכרון"],["opinion", "דעה"],["reason", "סיבה"],["choice", "בחירה"],["surprise", "הפתעה"],["trouble", "צרה"]]},
+  {n:4,name:"איפה זה?",words:[["above", "מעל"],["below", "מתחת ל־"],["under", "מתחת"],["inside", "בפנים"],["outside", "בחוץ"],["around", "מסביב"],["across", "מעבר ל־"],["along", "לאורך"],["toward", "לכיוון"],["among", "בין (הרבה)"],["opposite", "ממול"],["beside", "לצד"],["everywhere", "בכל מקום"],["nowhere", "בשום מקום"]]},
+  {n:5,name:"מדינה ועולם",words:[["country", "מדינה"],["government", "ממשלה"],["war", "מלחמה"],["peace", "שלום"],["law", "חוק"],["king", "מלך"],["queen", "מלכה"],["army", "צבא"],["president", "נשיא"],["flag", "דגל"],["border", "גבול"],["population", "אוכלוסייה"],["capital", "עיר בירה"],["citizen", "אזרח"]]},
+  {n:6,name:"ספורט ותנועה",words:[["race", "מרוץ"],["prize", "פרס"],["score", "תוצאה / ניקוד"],["goal", "שער / מטרה"],["coach", "מאמן"],["match", "משחק (תחרות)"],["swim", "לשחות", "swam"],["jump", "לקפוץ", "jumped"],["climb", "לטפס", "climbed"],["kick", "לבעוט", "kicked"],["exercise", "להתעמל / תרגיל"],["competition", "תחרות"],["medal", "מדליה"],["beat", "לגבור על", "beat"]]},
+  {n:7,name:"מילות קישור",words:[["although", "למרות ש־"],["however", "עם זאת"],["instead", "במקום"],["while", "בזמן ש־"],["since", "מאז / מכיוון ש־"],["unless", "אלא אם כן"],["though", "אף על פי ש־"],["either", "או... או"],["neither", "אף אחד מהשניים"],["whether", "האם (...או לא)"],["whose", "של מי"],["whatever", "מה שלא יהיה"],["anyway", "בכל מקרה"],["perhaps", "אולי (רשמי)"]]}
+ ]}
 ];
-const ALL = WEEKS.flatMap(w => w.words.map(([en,he,past]) => ({en,he,past,week:w.n})));
+const toWords = weeks => weeks.flatMap(w => w.words.map(([en,he,past]) => ({en,he,past,week:w.n})));
+const LEVEL_WORDS = LEVELS.map(l => toWords(l.weeks));
+const EVERY = LEVEL_WORDS.flat();
+const UNLOCK = 80; // words known in a level before the next one opens
+let WEEKS = LEVELS[0].weeks, ALL = LEVEL_WORDS[0];
+function useLevel(n){ WEEKS = LEVELS[n-1].weeks; ALL = LEVEL_WORDS[n-1]; }
 const MASTER = 3, ROUND = 10;
 
 /* ---------- state + storage ---------- */
-let S = {score:{}, wrong:{}, days:[], placed:false, updated:""};
+const fresh = () => ({score:{}, wrong:{}, days:[], placed:false, placedLv:{}, unlocked:{}, level:1, updated:""});
+let S = fresh();
 const LS = "vocab100-progress";
 const API = "https://script.google.com/macros/s/AKfycbx7OlcWD9IdMyp_s0ngiI7V1r453A_nfY-pvUR0b-YUdtOmXxKqZTLJ193OyTaGN_16/exec";
 const KEY = "b936d1c344f0f173a3fc6df1eb1fca73";
@@ -151,7 +201,16 @@ function setSync(st){
   const el = document.getElementById("sync");
   if(el){ el.textContent = SYNC_TEXT[st]; el.dataset.s = st; }
 }
-function loadLocal(){ try{ const v = localStorage.getItem(LS); if(v) S = Object.assign(S, JSON.parse(v)); }catch(e){} }
+function loadLocal(){ try{ const v = localStorage.getItem(LS); if(v) S = Object.assign(S, JSON.parse(v)); }catch(e){} normalize(); }
+// Fills fields added after launch and points WEEKS/ALL at the current level.
+function normalize(){
+  S.placedLv = S.placedLv || {}; if(S.placed) S.placedLv[1] = true;
+  S.unlocked = S.unlocked || {};
+  S.level = S.level >= 1 && S.level <= LEVELS.length && isOpen(S.level) ? S.level : 1;
+  useLevel(S.level);
+}
+function isOpen(n){ return n===1 || !!S.unlocked[n] || known(LEVEL_WORDS[n-2]) >= UNLOCK; }
+function setLevel(n){ S.level = n; useLevel(n); save(); go({name:"home"}); }
 function writeLocal(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
 function save(){
   S.updated = new Date().toISOString();
@@ -184,7 +243,8 @@ async function pull(){
     const d = await r.json();
     if(d.error) throw new Error(d.error);
     if(d.updated && (!S.updated || d.updated > S.updated)){
-      S = {score:d.score||{}, wrong:d.wrong||{}, days:d.days||[], placed:!!d.placed, updated:d.updated};
+      S = {score:d.score||{}, wrong:d.wrong||{}, days:d.days||[], placed:!!d.placed, placedLv:d.placedLv||{}, unlocked:d.unlocked||{}, level:d.level||1, updated:d.updated};
+      normalize();
       writeLocal();
       if(view.name !== "play") render();
       setSync("ok");
@@ -253,12 +313,15 @@ function home(){
   const k = known(ALL);
   app.innerHTML = `
   <section class="board">
-    <h1>100 מילים באנגלית</h1>
+    <h1>100 מילים באנגלית · שלב ${S.level}</h1>
     <div class="big"><span class="n">${k}</span><span class="of">מתוך 100 מילים שאתה יודע</span></div>
     <div class="bar"><i style="width:${k}%"></i></div>
     <div class="stats"><span>רצף: ${streak()} ימים</span><span>השבוע: ${weekDays()} מתוך 5 ימים</span></div>
   </section>
-  ${!S.placed ? `<button class="mode" style="margin-top:16px" data-a="place"><b>מבחן פתיחה</b><span>עוברים על כל 100 המילים ומסמנים מה כבר יודעים. לוקח כ-10 דקות.</span></button>`:""}
+  <div class="levels">${LEVELS.map(l=>{ const o=isOpen(l.n), done=known(LEVEL_WORDS[l.n-1])===LEVEL_WORDS[l.n-1].length;
+    return `<button class="lv ${l.n===S.level?'cur':''}" data-l="${l.n}" ${o?'':'disabled'}>${o?'':'🔒 '}שלב ${l.n}${done?' ✓':''}</button>`; }).join("")}</div>
+  ${nextLevelNote(k)}
+  ${!S.placedLv[S.level] ? `<button class="mode" style="margin-top:16px" data-a="place"><b>מבחן פתיחה</b><span>עוברים על כל 100 המילים ומסמנים מה כבר יודעים. לוקח כ-10 דקות.</span></button>`:""}
   <h2>השבועות</h2>
   <div class="weeks">
     ${WEEKS.map(w=>{ const list=ALL.filter(x=>x.week===w.n), kk=known(list), p=Math.round(kk/list.length*100);
@@ -270,15 +333,23 @@ function home(){
   </div>
   <div class="links"><button class="ghost" data-a="parent">מסך הורה</button><span class="sync" id="sync" data-s="${syncState}">${SYNC_TEXT[syncState]}</span></div>`;
   app.querySelectorAll("[data-w]").forEach(b=>b.onclick=()=>go({name:"week",w:+b.dataset.w}));
+  app.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>setLevel(+b.dataset.l));
+  const nx = app.querySelector('[data-a="next"]'); if(nx) nx.onclick=()=>setLevel(S.level+1);
   const pl = app.querySelector('[data-a="place"]'); if(pl) pl.onclick=()=>start("place", ALL);
   app.querySelector('[data-a="parent"]').onclick=()=>go({name:"parent"});
 }
 
+function nextLevelNote(k){
+  const n = S.level+1;
+  if(n > LEVELS.length) return "";
+  if(isOpen(n)) return k >= UNLOCK ? `<button class="mode next" data-a="next"><b>שלב ${n} פתוח! 🎉</b><span>100 מילים חדשות מחכות לך. אפשר לחזור לשלב הזה בכל רגע.</span></button>` : "";
+  return `<p class="note">עוד ${UNLOCK-k} מילים כדי לפתוח את שלב ${n}</p>`;
+}
 function weekList(w){ return w===8 ? ALL : ALL.filter(x=>x.week===w); }
 function weekScreen(){
   const w=view.w, list=weekList(w), name = w===8 ? "חזרה על הכל" : WEEKS[w-1].name;
   app.innerHTML = `
-  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">שבוע ${w}: ${name}</span></div>
+  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">שלב ${S.level} · שבוע ${w}: ${name}</span></div>
   <div class="modes">
     <button class="mode" data-m="flash"><b>כרטיסיות</b><span>רואים מילה, מנסים להיזכר, הופכים ובודקים</span></button>
     <button class="mode" data-m="quiz"><b>בוחן אמריקאי</b><span>${ROUND} שאלות, 4 תשובות לבחירה</span></button>
@@ -308,7 +379,7 @@ function start(mode, list){
 
 function play(){
   const v=view, x=v.items[v.i];
-  if(!x){ if(v.mode==="place"){S.placed=true; save();} return go({name:"result", mode:v.mode, right:v.right, total:v.items.length, missed:v.missed, back:v.back}); }
+  if(!x){ if(v.mode==="place"){ S.placedLv[S.level]=true; if(S.level===1) S.placed=true; save(); } return go({name:"result", mode:v.mode, right:v.right, total:v.items.length, missed:v.missed, back:v.back}); }
   const head = `<div class="top"><button class="back" data-a="quit">יציאה</button><span class="title">${{flash:"כרטיסיות",quiz:"בוחן",type:"כתיבה",place:"מבחן פתיחה"}[v.mode]}</span></div>
   <div class="progress">${v.i+1} מתוך ${v.items.length}</div>`;
   const pastLine = x.past ? `<div class="hint">עבר: <span class="en">${esc(x.past)}</span></div>` : "";
@@ -401,14 +472,22 @@ function result(){
 
 function parent(){
   const hard = Object.entries(S.wrong).sort((a,b)=>b[1]-a[1]).slice(0,15)
-    .map(([en,n])=>{ const x=ALL.find(w=>w.en===en); return x?{...x,n}:null; }).filter(Boolean);
+    .map(([en,n])=>{ const x=EVERY.find(w=>w.en===en); return x?{...x,n}:null; }).filter(Boolean);
   const last = S.days.slice(-14).reverse();
   app.innerHTML = `
   <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">מסך הורה</span></div>
+  <h2>שלב ${S.level}</h2>
   <div class="wordlist">
     ${WEEKS.map(w=>{const l=ALL.filter(x=>x.week===w.n);return `<div class="wl"><span>שבוע ${w.n}: ${w.name}</span><b>${known(l)} / ${l.length}</b></div>`;}).join("")}
-    <div class="wl"><span><b>סה"כ</b></span><b>${known(ALL)} / 100</b></div>
+    <div class="wl"><span><b>סה"כ בשלב</b></span><b>${known(ALL)} / ${ALL.length}</b></div>
   </div>
+  <h2>כל השלבים</h2>
+  <div class="wordlist">
+    ${LEVELS.map(l=>{ const lw=LEVEL_WORDS[l.n-1], o=isOpen(l.n);
+      return `<div class="wl"><span>שלב ${l.n}${o?'':' 🔒'}</span><b>${known(lw)} / ${lw.length}</b>${o?'':`<button class="mk" data-u="${l.n}">פתח</button>`}</div>`; }).join("")}
+    <div class="wl"><span><b>סה"כ מילים שהוא יודע</b></span><b>${known(EVERY)} / ${EVERY.length}</b></div>
+  </div>
+  <p class="note">שלב חדש נפתח כשיודעים ${UNLOCK} מילים מהשלב הקודם. אפשר גם לפתוח שלב ידנית.</p>
   <h2>מילים שהכי קשות לו</h2>
   ${hard.length?`<div class="wordlist">${hard.map(x=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="note" style="margin:0">${x.n} טעויות</span></div>`).join("")}</div>
   <p class="note">את המילים האלה כדאי לשלב השבוע ב"מילה של היום" ובשיחה.</p>`:`<p class="note">עוד אין טעויות רשומות.</p>`}
@@ -429,7 +508,8 @@ function parent(){
       "נוסה דרך: " + (lastSpeak || "-")
     ].join("<br>");
   };
-  app.querySelector('[data-a="reset"]').onclick=()=>{ if(confirm("למחוק את כל ההתקדמות ולהתחיל מחדש?")){ S={score:{},wrong:{},days:[],placed:false,updated:""}; save(); go({name:"home"}); } };
+  app.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.u; if(confirm(`לפתוח את שלב ${n} עכשיו?`)){ S.unlocked[n]=true; save(); render(); } });
+  app.querySelector('[data-a="reset"]').onclick=()=>{ if(confirm("למחוק את כל ההתקדמות ולהתחיל מחדש?")){ S=fresh(); useLevel(1); save(); go({name:"home"}); } };
 }
 
 loadLocal(); render(); pull();
