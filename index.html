@@ -369,13 +369,21 @@ function weekScreen(){
   });
 }
 
+// Quiz/typing round: words not yet known (weakest first) plus a few known words
+// for review. When everything is known, the whole round is review.
 function pickRound(list){
-  // weakest words first, then random
-  const sorted = shuffle(list).sort((a,b)=>sc(a.en)-sc(b.en));
-  return shuffle(sorted.slice(0, Math.min(ROUND, list.length)));
+  const weak = shuffle(list.filter(x=>sc(x.en)<MASTER)).sort((a,b)=>sc(a.en)-sc(b.en));
+  const strong = shuffle(list.filter(x=>sc(x.en)>=MASTER));
+  if(!weak.length) return strong.slice(0, ROUND);
+  const review = Math.min(strong.length, weak.length >= ROUND ? 2 : 3);
+  return shuffle([...weak.slice(0, ROUND-review), ...strong.slice(0, review)]);
+}
+// Flashcards: words not yet known first, known ones at the end.
+function flashOrder(list){
+  return [...shuffle(list.filter(x=>sc(x.en)<MASTER)), ...shuffle(list.filter(x=>sc(x.en)>=MASTER))];
 }
 function start(mode, list){
-  const items = mode==="place" ? shuffle(ALL) : (mode==="flash" ? shuffle(list) : pickRound(list));
+  const items = mode==="place" ? shuffle(ALL) : (mode==="flash" ? flashOrder(list) : pickRound(list));
   go({name:"play", mode, items, i:0, right:0, missed:[], pool:list, back:view.w||null});
 }
 
