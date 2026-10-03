@@ -62,6 +62,7 @@ h2{font-size:18px;margin:26px 0 10px}
 .mode.review{margin-top:12px}
 .mode.review.due{border-color:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb, var(--sun) 35%, transparent)}
 .mode.gram{margin-top:12px}
+.gbar{background:var(--line);margin:12px 0 0}
 .rule{background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:14px 16px}
 .rule p{margin:0 0 8px}
 .rule ul{margin:0 0 8px;padding-inline-start:20px}
@@ -227,7 +228,6 @@ function normalize(){
   S.seen = S.seen || {}; S.forgot = S.forgot || {}; S.lastReview = S.lastReview || "";
   S.gscore = S.gscore || {}; S.gwrong = S.gwrong || {}; S.gseen = S.gseen || {}; S.gunlocked = S.gunlocked || {};
   migrateUnitKeys();
-  keepOpenUnits();
   S.unlocked = S.unlocked || {};
   S.level = S.level >= 1 && S.level <= LEVELS.length && isOpen(S.level) ? S.level : 1;
   keepOpenLevels();
@@ -242,7 +242,7 @@ function keepOpenLevels(){
 function setLevel(n){ S.level = n; useLevel(n); save(); go({name:"home"}); }
 function writeLocal(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
 function save(){
-  keepOpenLevels(); keepOpenUnits();
+  keepOpenLevels();
   S.updated = new Date().toISOString();
   writeLocal();
   pending = true;
@@ -700,27 +700,27 @@ const GRAMMAR = [
   {"t":"order","he":"הוא לא בא כי הוא היה חולה.","w":"He didn't come because he was sick","d":"so","alt":[],"p":"."},
   {"t":"order","he":"חיכינו עד שהאוטובוס הגיע.","w":"We waited until the bus came","d":"after","alt":[],"p":"."},
   {"t":"order","he":"הייתי צמא, אז שתיתי מים.","w":"I was thirsty so I drank water","d":"because","alt":[],"p":"."}]}];
-const G_UNLOCK = 0.8; // share of a unit's sentences known before the next unit opens
 GRAMMAR.forEach(u => u.items.forEach((it, i) => { it.id = u.id + ":" + i; }));
 const gsc = it => S.gscore[it.id] || 0;
 const gknown = u => u.items.filter(it => gsc(it) >= MASTER).length;
-const gneed = u => Math.ceil(u.items.length * G_UNLOCK);
-// S.gunlocked[unit id] works like S.unlocked for levels: true/false = set by a parent or kept open, unset = automatic.
-function gOpen(n){ return n===0 || (S.gunlocked[GRAMMAR[n].id] ?? gknown(GRAMMAR[n-1]) >= gneed(GRAMMAR[n-1])); }
-function keepOpenUnits(){
-  for(let n=1; n<GRAMMAR.length; n++)
-    if(S.gunlocked[GRAMMAR[n].id]===undefined && gknown(GRAMMAR[n-1]) >= gneed(GRAMMAR[n-1])) S.gunlocked[GRAMMAR[n].id] = true;
-}
+const gtried = u => u.items.filter(it => gsc(it) >= 1).length;               // answered right at least once
+const gpoints = u => u.items.reduce((t, it) => t + gsc(it), 0) / (u.items.length * MASTER); // 0..1, grows with every right answer
+// All units are open; a parent can close one (S.gunlocked[unit id] === false).
+function gOpen(n){ return n===0 || S.gunlocked[GRAMMAR[n].id] !== false; }
 // Units were first keyed by position, in this order.
 const OLD_UNIT_ORDER = ["ps","pc","im","pa"];
 function migrateUnitKeys(){
+  // Units used to unlock one by one; those unlock/close marks no longer apply.
+  if(!S.gfree){ S.gunlocked = {}; S.gfree = true; }
   for(const k of Object.keys(S.gunlocked)) if(/^\d+$/.test(k)){
     const id = OLD_UNIT_ORDER[k];
     if(id && S.gunlocked[id]===undefined) S.gunlocked[id] = S.gunlocked[k];
     delete S.gunlocked[k];
   }
 }
-function topUnit(){ let n=0; while(n+1<GRAMMAR.length && gOpen(n+1)) n++; return n; }
+// The unit to suggest: the first open one that isn't fully learned yet.
+function topUnit(){ const n = GRAMMAR.findIndex((u,i)=>gOpen(i) && gknown(u) < u.items.length); return n < 0 ? GRAMMAR.length-1 : n; }
+const gstats = u => `נכון לפחות פעם אחת: ${gtried(u)}/${u.items.length} · נתפסו: ${gknown(u)}`;
 function gbump(it, ok){
   S.gscore[it.id] = ok ? Math.min(MASTER, gsc(it)+1) : 0;
   if(!ok) S.gwrong[it.id] = (S.gwrong[it.id]||0)+1;
@@ -743,17 +743,17 @@ const unitOf = it => GRAMMAR.find(u => u.items.includes(it));
 
 function grammarCard(){
   const n = topUnit(), u = GRAMMAR[n];
-  return `<button class="mode gram" data-a="grammar"><b>משפטים וזמנים ✍️</b><span>יחידה ${n+1}: ${u.name} · ${gknown(u)} מתוך ${u.items.length} משפטים</span></button>`;
+  return `<button class="mode gram" data-a="grammar"><b>משפטים וזמנים ✍️</b><span>יחידה ${n+1}: ${u.name} · ${gstats(u)}</span></button>`;
 }
 
 function grammarScreen(){
   app.innerHTML = `
   <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">משפטים וזמנים</span></div>
-  <p class="note">כל יחידה מלמדת זמן אחד. יחידה נפתחת כשיודעים ${Math.round(G_UNLOCK*100)}% מהמשפטים ביחידה הקודמת.</p>
-  <div class="weeks">${GRAMMAR.map((u,n)=>{ const o=gOpen(n), k=gknown(u), p=Math.round(k/u.items.length*100);
+  <p class="note">כל יחידה מלמדת זמן אחד. אפשר לעבור בין היחידות בחופשיות, ומומלץ ללכת לפי הסדר. משפט "נתפס" אחרי 3 תשובות נכונות.</p>
+  <div class="weeks">${GRAMMAR.map((u,n)=>{ const o=gOpen(n), k=gknown(u), p=Math.round(gpoints(u)*100);
     return `<button class="week ${k===u.items.length?'done':''}" data-g="${n}" ${o?'':'disabled'}>
       <span class="num">${o?n+1:'🔒'}</span>
-      <span class="t"><b>${u.name} · <span class="en">${esc(u.short)}</span></b><span>${k} מתוך ${u.items.length} משפטים</span><span class="mini"><i style="width:${p}%"></i></span></span>
+      <span class="t"><b>${u.name} · <span class="en">${esc(u.short)}</span></b><span>${gstats(u)}</span><span class="mini"><i style="width:${p}%"></i></span></span>
     </button>`; }).join("")}</div>`;
   app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
   app.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>go({name:"gunit", n:+b.dataset.g}));
@@ -771,7 +771,8 @@ function gunitScreen(){
   <h2>דוגמאות</h2>
   <div class="wordlist">${u.ex.map(([en,he],i)=>`<div class="wl ex"><span class="en">${esc(en)}</span><span>${esc(he)}</span><button class="mk" data-say="${i}" aria-label="השמע">🔊</button></div>`).join("")}</div>
   <button class="btn go wide" data-a="gpractice">תרגול</button>
-  <p class="note">${gknown(u)} מתוך ${u.items.length} משפטים נתפסו. כל משפט צריך 3 תשובות נכונות.</p>`;
+  <div class="bar gbar"><i style="width:${Math.round(gpoints(u)*100)}%"></i></div>
+  <p class="note">${gstats(u)} מתוך ${u.items.length}. כל תשובה נכונה מקדמת את הפס; משפט נתפס אחרי 3 תשובות נכונות, ותשובה שגויה מאפסת אותו.</p>`;
   app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"grammar"});
   app.querySelectorAll("[data-say]").forEach(b=>b.onclick=()=>speak(u.ex[+b.dataset.say][0]));
   app.querySelector('[data-a="gpractice"]').onclick=()=>go({name:"gplay", n, items:gRound(n), i:0, right:0, missed:[]});
@@ -837,6 +838,7 @@ function gresult(){
     <div class="n">${v.right}/${v.total}</div>
     <p>${v.right===v.total ? "מושלם! כל המשפטים נכונים." : v.right/v.total>=.7 ? "יפה מאוד! עוד קצת תרגול וזה שלך." : "התחלה טובה. כדאי לקרוא שוב את ההסבר ולתרגל עוד סבב."}</p>
     ${v.missed.length?`<h2>משפטים לחזרה</h2><div class="wordlist">${v.missed.map(it=>`<div class="wl ex"><span class="en">${esc(gText(it))}</span><span>${esc(it.he)}</span></div>`).join("")}</div>`:""}
+    <p class="note">${gstats(GRAMMAR[v.n])}</p>
     <button class="btn go wide" data-a="again">חזרה ליחידה</button>
   </div>`;
   app.querySelector('[data-a="again"]').onclick=()=>go({name:"gunit", n:v.n});
@@ -888,14 +890,13 @@ function parent(){
     ].join("<br>");
   };
   app.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.u; if(confirm(`לפתוח את שלב ${n} עכשיו?`)){ S.unlocked[n]=true; save(); render(); } });
-  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.go; if(confirm(`לפתוח את יחידה ${n+1} עכשיו?`)){ S.gunlocked[GRAMMAR[n].id]=true; save(); render(); } });
+  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.go; if(confirm(`לפתוח את יחידה ${n+1} עכשיו?`)){ delete S.gunlocked[GRAMMAR[n].id]; save(); render(); } });
   app.querySelectorAll("[data-gc]").forEach(b=>b.onclick=()=>{
     const n=+b.dataset.gc, u=GRAMMAR[n];
     if(!confirm(`לסגור את יחידה ${n+1}?`)) return;
     if(confirm(`למחוק גם את ההתקדמות ביחידה ${n+1}? כדאי אם רק בדקת אותה.`))
       u.items.forEach(it=>{ delete S.gscore[it.id]; delete S.gwrong[it.id]; delete S.gseen[it.id]; });
-    delete S.gunlocked[u.id];
-    if(gOpen(n)) S.gunlocked[u.id]=false;
+    S.gunlocked[u.id]=false;
     save(); render();
   });
   app.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{
