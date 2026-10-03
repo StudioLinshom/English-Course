@@ -226,6 +226,7 @@ function normalize(){
   S.placedLv = S.placedLv || {}; if(S.placed) S.placedLv[1] = true;
   S.seen = S.seen || {}; S.forgot = S.forgot || {}; S.lastReview = S.lastReview || "";
   S.gscore = S.gscore || {}; S.gwrong = S.gwrong || {}; S.gseen = S.gseen || {}; S.gunlocked = S.gunlocked || {};
+  migrateUnitKeys();
   keepOpenUnits();
   S.unlocked = S.unlocked || {};
   S.level = S.level >= 1 && S.level <= LEVELS.length && isOpen(S.level) ? S.level : 1;
@@ -549,7 +550,7 @@ function result(){
 // Item types: fill (choose the missing word), choose (choose the correct sentence),
 // order (build the sentence from word tiles; alt = other accepted orders, d = distractor tile).
 const GRAMMAR = [
- {"id":"ps","name":"הווה פשוט","short":"I play / He plays","rule":"משתמשים בהווה פשוט לדברים שקורים באופן קבוע: הרגלים, עובדות, ודברים שחוזרים על עצמם.","form":[["אני / אתה / אנחנו / הם","I play · You play · They play"],["הוא / היא (מוסיפים s)","He plays · She plays"],["שלילה","I don't play · He doesn't play"],["שאלה","Do you play? · Does he play?"]],"signals":"every day, always, usually, sometimes, never, on Mondays","ex":[["I play football every day.","אני משחק כדורגל כל יום."],["My sister reads books.","אחותי קוראת ספרים."],["He doesn't like cheese.","הוא לא אוהב גבינה."]],"items":[
+ {"id":"ps","name":"הווה פשוט","short":"I play / He plays","rule":"משתמשים בהווה פשוט לדברים שקורים באופן קבוע: הרגלים, עובדות, ודברים שחוזרים על עצמם. כשמדברים על הוא או היא, מוסיפים s לפועל.","form":[["אני / אתה / אנחנו / הם","I play · You play · They play"],["הוא / היא","He plays · She plays"],["שלילה","I don't play · He doesn't play"],["שאלה","Do you play? · Does he play?"]],"signals":"every day, always, usually, sometimes, never, on Mondays","ex":[["I play football every day.","אני משחק כדורגל כל יום."],["My sister reads books.","אחותי קוראת ספרים."],["He doesn't like cheese.","הוא לא אוהב גבינה."]],"items":[
   {"t":"fill","s":"My brother ___ football every day.","he":"אח שלי משחק כדורגל כל יום.","a":"plays","o":["play","played","playing"]},
   {"t":"fill","s":"We ___ to school by bus.","he":"אנחנו נוסעים לבית הספר באוטובוס.","a":"go","o":["goes","went","going"]},
   {"t":"fill","s":"She ___ like vegetables.","he":"היא לא אוהבת ירקות.","a":"doesn't","o":["don't","isn't","didn't"]},
@@ -599,7 +600,32 @@ const GRAMMAR = [
   {"t":"order","he":"יורד שלג על ההר.","w":"It is snowing on the mountain","d":"snows","alt":[],"p":"."},
   {"t":"order","he":"אני לא צופה בטלוויזיה.","w":"I am not watching TV","d":"don't","alt":[],"p":"."},
   {"t":"order","he":"אבא שלי נוהג לעבודה עכשיו.","w":"My father is driving to work now","d":"drives","alt":["Now my father is driving to work"],"p":"."}]},
- {"id":"im","name":"ציווי","short":"Open the door!","rule":"משתמשים בציווי כדי לבקש, להורות או להזהיר. מתחילים ישר בפועל, בלי I או you.","form":[["הוראה","Open the door!"],["שלילה (מתחילים ב-Don't)","Don't run!"],["בנימוס","Please sit down."],["ביחד (Let's)","Let's go!"]],"signals":"please · Let's · Don't","ex":[["Close the window, please.","סגור את החלון, בבקשה."],["Don't touch the oven!","אל תיגע בתנור!"],["Let's play outside.","בוא נשחק בחוץ."]],"items":[
+ {"id":"pa","name":"עבר פשוט","short":"I played / I went","rule":"משתמשים בעבר פשוט לדברים שקרו והסתיימו בעבר. לפועל רגיל מוסיפים ed, ויש פעלים חריגים שצריך לזכור. אחרי didn't ו-Did הפועל חוזר לצורה הרגילה: I didn't go (ולא went).","form":[["פועל רגיל","play → played · finish → finished"],["פעלים חריגים","go → went · buy → bought"],["שלילה","I didn't go"],["שאלה","Did you go?"]],"signals":"yesterday, last week, ago, this morning, in 2020","ex":[["I played football yesterday.","שיחקתי כדורגל אתמול."],["We went to the beach last week.","הלכנו לים בשבוע שעבר."],["She didn't finish her homework.","היא לא סיימה את שיעורי הבית שלה."]],"items":[
+  {"t":"fill","s":"Yesterday I ___ football with my cousin.","he":"אתמול שיחקתי כדורגל עם בן הדוד שלי.","a":"played","o":["play","plays","am playing"]},
+  {"t":"fill","s":"We ___ to the airport last night.","he":"נסענו לשדה התעופה אתמול בלילה.","a":"went","o":["go","goed","going"]},
+  {"t":"fill","s":"She ___ a new jacket last week.","he":"היא קנתה מעיל חדש בשבוע שעבר.","a":"bought","o":["buyed","buys","buy"]},
+  {"t":"fill","s":"I ___ finish my homework yesterday.","he":"לא סיימתי את שיעורי הבית אתמול.","a":"didn't","o":["don't","doesn't","wasn't"]},
+  {"t":"fill","s":"___ you see the movie?","he":"ראית את הסרט?","a":"Did","o":["Do","Were","Are"]},
+  {"t":"fill","s":"He didn't ___ the game.","he":"הוא לא ניצח במשחק.","a":"win","o":["won","wins","winning"]},
+  {"t":"fill","s":"Two days ago we ___ our grandparents.","he":"לפני יומיים ביקרנו את סבא וסבתא.","a":"visited","o":["visit","visits","visiting"]},
+  {"t":"fill","s":"The exam ___ difficult.","he":"המבחן היה קשה.","a":"was","o":["were","is","did"]},
+  {"t":"choose","he":"שכחתי את המפתח שלי.","a":"I forgot my key.","o":["I forgeted my key.","I did forgot my key."]},
+  {"t":"choose","he":"הם לא הגיעו בזמן.","a":"They didn't arrive on time.","o":["They didn't arrived on time.","They not arrived on time."]},
+  {"t":"choose","he":"איפה היית אתמול?","a":"Where were you yesterday?","o":["Where was you yesterday?","Where did you was yesterday?"]},
+  {"t":"choose","he":"הוא הביא עוגה למסיבה.","a":"He brought a cake to the party.","o":["He bringed a cake to the party.","He brang a cake to the party."]},
+  {"t":"order","he":"אתמול הלכתי לספרייה.","w":"Yesterday I went to the library","d":"go","alt":["I went to the library yesterday"],"p":"."},
+  {"t":"order","he":"היא לא אכלה ארוחת בוקר.","w":"She didn't eat breakfast","d":"ate","alt":[],"p":"."},
+  {"t":"order","he":"קנית לחם?","w":"Did you buy bread","d":"bought","alt":[],"p":"?"},
+  {"t":"order","he":"בנינו בית עץ בשבוע שעבר.","w":"We built a tree house last week","d":"build","alt":["Last week we built a tree house"],"p":"."},
+  {"t":"order","he":"הוא שכח את התיק שלו בבית.","w":"He forgot his bag at home","d":"forget","alt":[],"p":"."},
+  {"t":"order","he":"המורה הסבירה את השיעור.","w":"The teacher explained the lesson","d":"explains","alt":[],"p":"."},
+  {"t":"order","he":"לא חיכינו הרבה זמן.","w":"We didn't wait long","d":"waited","alt":[],"p":"."},
+  {"t":"order","he":"הם היו נרגשים מאוד.","w":"They were very excited","d":"was","alt":[],"p":"."},
+  {"t":"order","he":"מתי הגעת הביתה?","w":"When did you come home","d":"came","alt":[],"p":"?"},
+  {"t":"order","he":"לפני שבוע ראיתי את השכן שלנו.","w":"A week ago I saw our neighbor","d":"see","alt":["I saw our neighbor a week ago"],"p":"."},
+  {"t":"order","he":"היא החליטה לשאול ספר.","w":"She decided to borrow a book","d":"decides","alt":[],"p":"."},
+  {"t":"order","he":"אתמול לא היה לי זמן.","w":"Yesterday I didn't have time","d":"had","alt":["I didn't have time yesterday"],"p":"."}]},
+ {"id":"im","name":"ציווי","short":"Open the door!","rule":"משתמשים בציווי כדי לבקש, להורות או להזהיר. מתחילים ישר בפועל, בלי I או you.","form":[["הוראה","Open the door!"],["שלילה","Don't run!"],["בנימוס","Please sit down."],["ביחד","Let's go!"]],"signals":"please · Let's · Don't","ex":[["Close the window, please.","סגור את החלון, בבקשה."],["Don't touch the oven!","אל תיגע בתנור!"],["Let's play outside.","בוא נשחק בחוץ."]],"items":[
   {"t":"fill","s":"___ the door, please.","he":"פתח את הדלת, בבקשה.","a":"Open","o":["Opens","Opening","Opened"]},
   {"t":"fill","s":"___ run in the hospital!","he":"אל תרוץ בבית החולים!","a":"Don't","o":["Not","Doesn't","No"]},
   {"t":"fill","s":"___ go to the beach!","he":"בואו נלך לים!","a":"Let's","o":["Lets","Let","We"]},
@@ -624,41 +650,75 @@ const GRAMMAR = [
   {"t":"order","he":"אל תשכחו את הבקבוקים שלכם.","w":"Don't forget your bottles","d":"forgot","alt":[],"p":"."},
   {"t":"order","he":"לך ישר ואז פנה ימינה.","w":"Go straight and then turn right","d":"goes","alt":[],"p":"."},
   {"t":"order","he":"בבקשה תענה על השאלה.","w":"Please answer the question","d":"answers","alt":[],"p":"."}]},
- {"id":"pa","name":"עבר פשוט","short":"I played / I went","rule":"משתמשים בעבר פשוט לדברים שקרו והסתיימו בעבר. אחרי didn't ו-Did הפועל חוזר לצורה הרגילה: I didn't go (ולא went).","form":[["פועל רגיל (מוסיפים ed)","play → played · finish → finished"],["פעלים חריגים","go → went · buy → bought"],["שלילה","I didn't go"],["שאלה","Did you go?"]],"signals":"yesterday, last week, ago, this morning, in 2020","ex":[["I played football yesterday.","שיחקתי כדורגל אתמול."],["We went to the beach last week.","הלכנו לים בשבוע שעבר."],["She didn't finish her homework.","היא לא סיימה את שיעורי הבית שלה."]],"items":[
-  {"t":"fill","s":"Yesterday I ___ football with my cousin.","he":"אתמול שיחקתי כדורגל עם בן הדוד שלי.","a":"played","o":["play","plays","am playing"]},
-  {"t":"fill","s":"We ___ to the airport last night.","he":"נסענו לשדה התעופה אתמול בלילה.","a":"went","o":["go","goed","going"]},
-  {"t":"fill","s":"She ___ a new jacket last week.","he":"היא קנתה מעיל חדש בשבוע שעבר.","a":"bought","o":["buyed","buys","buy"]},
-  {"t":"fill","s":"I ___ finish my homework yesterday.","he":"לא סיימתי את שיעורי הבית אתמול.","a":"didn't","o":["don't","doesn't","wasn't"]},
-  {"t":"fill","s":"___ you see the movie?","he":"ראית את הסרט?","a":"Did","o":["Do","Were","Are"]},
-  {"t":"fill","s":"He didn't ___ the game.","he":"הוא לא ניצח במשחק.","a":"win","o":["won","wins","winning"]},
-  {"t":"fill","s":"Two days ago we ___ our grandparents.","he":"לפני יומיים ביקרנו את סבא וסבתא.","a":"visited","o":["visit","visits","visiting"]},
-  {"t":"fill","s":"The exam ___ difficult.","he":"המבחן היה קשה.","a":"was","o":["were","is","did"]},
-  {"t":"choose","he":"שכחתי את המפתח שלי.","a":"I forgot my key.","o":["I forgeted my key.","I did forgot my key."]},
-  {"t":"choose","he":"הם לא הגיעו בזמן.","a":"They didn't arrive on time.","o":["They didn't arrived on time.","They not arrived on time."]},
-  {"t":"choose","he":"איפה היית אתמול?","a":"Where were you yesterday?","o":["Where was you yesterday?","Where did you was yesterday?"]},
-  {"t":"choose","he":"הוא הביא עוגה למסיבה.","a":"He brought a cake to the party.","o":["He bringed a cake to the party.","He brang a cake to the party."]},
-  {"t":"order","he":"אתמול הלכתי לספרייה.","w":"Yesterday I went to the library","d":"go","alt":["I went to the library yesterday"],"p":"."},
-  {"t":"order","he":"היא לא אכלה ארוחת בוקר.","w":"She didn't eat breakfast","d":"ate","alt":[],"p":"."},
-  {"t":"order","he":"קנית לחם?","w":"Did you buy bread","d":"bought","alt":[],"p":"?"},
-  {"t":"order","he":"בנינו בית עץ בשבוע שעבר.","w":"We built a tree house last week","d":"build","alt":["Last week we built a tree house"],"p":"."},
-  {"t":"order","he":"הוא שכח את התיק שלו בבית.","w":"He forgot his bag at home","d":"forget","alt":[],"p":"."},
-  {"t":"order","he":"המורה הסבירה את השיעור.","w":"The teacher explained the lesson","d":"explains","alt":[],"p":"."},
-  {"t":"order","he":"לא חיכינו הרבה זמן.","w":"We didn't wait long","d":"waited","alt":[],"p":"."},
-  {"t":"order","he":"הם היו נרגשים מאוד.","w":"They were very excited","d":"was","alt":[],"p":"."},
-  {"t":"order","he":"מתי הגעת הביתה?","w":"When did you come home","d":"came","alt":[],"p":"?"},
-  {"t":"order","he":"לפני שבוע ראיתי את השכן שלנו.","w":"A week ago I saw our neighbor","d":"see","alt":["I saw our neighbor a week ago"],"p":"."},
-  {"t":"order","he":"היא החליטה לשאול ספר.","w":"She decided to borrow a book","d":"decides","alt":[],"p":"."},
-  {"t":"order","he":"אתמול לא היה לי זמן.","w":"Yesterday I didn't have time","d":"had","alt":["I didn't have time yesterday"],"p":"."}]}];
+ {"id":"fu","name":"עתיד","short":"I will go / I'm going to","rule":"משתמשים בעתיד לדברים שיקרו אחר כך. יש שתי דרכים נפוצות: will להחלטות, הבטחות וניחושים, ו-going to לתוכניות שכבר החלטנו עליהן.","form":[["עתיד רגיל","I will help you · It will rain"],["שלילה","I won't forget (won't = will not)"],["שאלה","Will you come?"],["תוכנית","I am going to visit my grandparents"],["תוכנית – שלילה ושאלה","He isn't going to play · Are you going to come?"]],"signals":"tomorrow, next week, soon, later, tonight, in two days","ex":[["I will call you tomorrow.","אני אתקשר אליך מחר."],["We are going to visit our cousins next week.","אנחנו הולכים לבקר את בני הדודים שלנו בשבוע הבא."],["It won't rain today.","היום לא ירד גשם."]],"items":[
+  {"t":"fill","s":"Tomorrow I ___ my grandparents.","he":"מחר אבקר את סבא וסבתא שלי.","a":"will visit","o":["visit","visited","visits"]},
+  {"t":"fill","s":"Don't worry, I ___ forget.","he":"אל תדאג, אני לא אשכח.","a":"won't","o":["don't","didn't","isn't"]},
+  {"t":"fill","s":"___ you help me with my homework?","he":"תעזור לי בשיעורי הבית?","a":"Will","o":["Did","Are","Does"]},
+  {"t":"fill","s":"We are ___ to play football after school.","he":"אנחנו הולכים לשחק כדורגל אחרי בית הספר.","a":"going","o":["go","went","will"]},
+  {"t":"fill","s":"Look at the clouds! It ___ rain.","he":"תראה את העננים! עומד לרדת גשם.","a":"is going to","o":["going to","is go to","will to"]},
+  {"t":"fill","s":"Next year my sister ___ twelve.","he":"בשנה הבאה אחותי תהיה בת שתים עשרה.","a":"will be","o":["is","was","will is"]},
+  {"t":"fill","s":"They ___ going to buy a new car.","he":"הם לא הולכים לקנות מכונית חדשה.","a":"aren't","o":["don't","won't","isn't"]},
+  {"t":"fill","s":"I think our team ___ win the game.","he":"אני חושב שהקבוצה שלנו תנצח במשחק.","a":"will","o":["is","does","did"]},
+  {"t":"choose","he":"אני אעזור לך.","a":"I will help you.","o":["I will helping you.","I will to help you."]},
+  {"t":"choose","he":"הוא יגיע מאוחר.","a":"He will arrive late.","o":["He will arrives late.","He wills arrive late."]},
+  {"t":"choose","he":"אנחנו הולכים לבנות בית עץ.","a":"We are going to build a tree house.","o":["We going to build a tree house.","We are going build a tree house."]},
+  {"t":"choose","he":"תבוא למסיבה?","a":"Will you come to the party?","o":["Do you will come to the party?","Will you coming to the party?"]},
+  {"t":"order","he":"אני אתקשר אליך מחר.","w":"I will call you tomorrow","d":"called","alt":["Tomorrow I will call you"],"p":"."},
+  {"t":"order","he":"היא לא תשכח את הספר.","w":"She won't forget the book","d":"forgot","alt":[],"p":"."},
+  {"t":"order","he":"תעזור לי?","w":"Will you help me","d":"Do","alt":[],"p":"?"},
+  {"t":"order","he":"אנחנו הולכים לבקר בים בשבת.","w":"We are going to visit the beach on Saturday","d":"visited","alt":["On Saturday we are going to visit the beach"],"p":"."},
+  {"t":"order","he":"הוא הולך לקנות נעליים חדשות.","w":"He is going to buy new shoes","d":"bought","alt":[],"p":"."},
+  {"t":"order","he":"בשבוע הבא יהיה חם.","w":"Next week it will be hot","d":"was","alt":["It will be hot next week"],"p":"."},
+  {"t":"order","he":"אני לא הולך לשחק היום.","w":"I am not going to play today","d":"played","alt":["Today I am not going to play"],"p":"."},
+  {"t":"order","he":"מתי תגיע?","w":"When will you arrive","d":"did","alt":[],"p":"?"},
+  {"t":"order","he":"המורה תסביר את השיעור.","w":"The teacher will explain the lesson","d":"explained","alt":[],"p":"."},
+  {"t":"order","he":"הם הולכים לנסוע לעיר.","w":"They are going to travel to the city","d":"traveled","alt":[],"p":"."},
+  {"t":"order","he":"אני מבטיח שאחזור בקרוב.","w":"I promise I will come back soon","d":"came","alt":[],"p":"."},
+  {"t":"order","he":"בקרוב נדע את התשובה.","w":"Soon we will know the answer","d":"knew","alt":["We will know the answer soon"],"p":"."}]},
+ {"id":"lk","name":"מילות קישור","short":"because, so, but, if","rule":"מילות קישור מחברות שני חלקים למשפט אחד, ומראות מה הקשר ביניהם: סיבה, תוצאה, ניגוד, זמן או תנאי.","form":[["סיבה – כי","because"],["תוצאה – אז, לכן","so"],["ניגוד – אבל","but"],["זמן","when · before · after · then · until"],["תנאי – אם","if"],["חיבור ובחירה – ו, או","and · or"]],"signals":"because, so, but, and, or, when, if, before, after, then, until","ex":[["I stayed home because I was sick.","נשארתי בבית כי הייתי חולה."],["It was late, so we went to sleep.","היה מאוחר, אז הלכנו לישון."],["If it rains, we will stay inside.","אם ירד גשם, נישאר בפנים."]],"items":[
+  {"t":"fill","s":"I was hungry, ___ I ate a sandwich.","he":"הייתי רעב, אז אכלתי כריך.","a":"so","o":["because","but","if"]},
+  {"t":"fill","s":"She is tired ___ she didn't sleep well.","he":"היא עייפה כי היא לא ישנה טוב.","a":"because","o":["so","but","or"]},
+  {"t":"fill","s":"I like apples, ___ I don't like bananas.","he":"אני אוהב תפוחים, אבל אני לא אוהב בננות.","a":"but","o":["so","because","if"]},
+  {"t":"fill","s":"___ it rains, we will play inside.","he":"אם ירד גשם, נשחק בפנים.","a":"If","o":["But","So","Because"]},
+  {"t":"fill","s":"Wash your hands ___ you eat.","he":"תשטוף ידיים לפני שאתה אוכל.","a":"before","o":["after","because","so"]},
+  {"t":"fill","s":"We watched a movie ___ dinner.","he":"צפינו בסרט אחרי ארוחת הערב.","a":"after","o":["before","because","but"]},
+  {"t":"fill","s":"Do you want tea ___ juice?","he":"אתה רוצה תה או מיץ?","a":"or","o":["but","so","because"]},
+  {"t":"fill","s":"Wait here ___ I come back.","he":"חכה כאן עד שאחזור.","a":"until","o":["after","so","because"]},
+  {"t":"choose","he":"נשארתי בבית כי הייתי חולה.","a":"I stayed home because I was sick.","o":["I stayed home so I was sick.","I stayed home but I was sick."]},
+  {"t":"choose","he":"כשאני עייף, אני הולך לישון.","a":"When I am tired, I go to sleep.","o":["If I am tired, so I go to sleep.","When I am tired, but I go to sleep."]},
+  {"t":"choose","he":"הוא רצה לשחק, אבל היו לו שיעורי בית.","a":"He wanted to play, but he had homework.","o":["He wanted to play, so he had homework.","He wanted to play, because he had homework."]},
+  {"t":"choose","he":"קודם אכלנו, ואז שיחקנו.","a":"First we ate, and then we played.","o":["First we ate, because we played.","First we ate, if we played."]},
+  {"t":"order","he":"היה קר, אז לבשתי מעיל.","w":"It was cold so I wore a jacket","d":"because","alt":[],"p":"."},
+  {"t":"order","he":"אני לומד כי יש לי מבחן.","w":"I am studying because I have an exam","d":"so","alt":[],"p":"."},
+  {"t":"order","he":"אם תעזור לי, אסיים מהר.","w":"I will finish fast if you help me","d":"but","alt":["If you help me I will finish fast"],"p":"."},
+  {"t":"order","he":"היא רצתה ללכת, אבל היה מאוחר.","w":"She wanted to go but it was late","d":"so","alt":[],"p":"."},
+  {"t":"order","he":"אחרי בית הספר אני משחק בפארק.","w":"After school I play in the park","d":"before","alt":["I play in the park after school"],"p":"."},
+  {"t":"order","he":"סגור את הדלת לפני שאתה הולך.","w":"Close the door before you go","d":"after","alt":["Before you go close the door"],"p":"."},
+  {"t":"order","he":"כשאני משועמם, אני מצייר.","w":"I draw when I am bored","d":"if","alt":["When I am bored I draw"],"p":"."},
+  {"t":"order","he":"אכלנו ארוחת ערב ואז צפינו בטלוויזיה.","w":"We ate dinner and then we watched TV","d":"because","alt":[],"p":"."},
+  {"t":"order","he":"אתה רוצה ללכת לים או לבריכה?","w":"Do you want to go to the beach or the pool","d":"but","alt":[],"p":"?"},
+  {"t":"order","he":"הוא לא בא כי הוא היה חולה.","w":"He didn't come because he was sick","d":"so","alt":[],"p":"."},
+  {"t":"order","he":"חיכינו עד שהאוטובוס הגיע.","w":"We waited until the bus came","d":"after","alt":[],"p":"."},
+  {"t":"order","he":"הייתי צמא, אז שתיתי מים.","w":"I was thirsty so I drank water","d":"because","alt":[],"p":"."}]}];
 const G_UNLOCK = 0.8; // share of a unit's sentences known before the next unit opens
 GRAMMAR.forEach(u => u.items.forEach((it, i) => { it.id = u.id + ":" + i; }));
 const gsc = it => S.gscore[it.id] || 0;
 const gknown = u => u.items.filter(it => gsc(it) >= MASTER).length;
 const gneed = u => Math.ceil(u.items.length * G_UNLOCK);
-// S.gunlocked[n] works like S.unlocked for levels: true/false = set by a parent or kept open, unset = automatic.
-function gOpen(n){ return n===0 || (S.gunlocked[n] ?? gknown(GRAMMAR[n-1]) >= gneed(GRAMMAR[n-1])); }
+// S.gunlocked[unit id] works like S.unlocked for levels: true/false = set by a parent or kept open, unset = automatic.
+function gOpen(n){ return n===0 || (S.gunlocked[GRAMMAR[n].id] ?? gknown(GRAMMAR[n-1]) >= gneed(GRAMMAR[n-1])); }
 function keepOpenUnits(){
   for(let n=1; n<GRAMMAR.length; n++)
-    if(S.gunlocked[n]===undefined && gknown(GRAMMAR[n-1]) >= gneed(GRAMMAR[n-1])) S.gunlocked[n] = true;
+    if(S.gunlocked[GRAMMAR[n].id]===undefined && gknown(GRAMMAR[n-1]) >= gneed(GRAMMAR[n-1])) S.gunlocked[GRAMMAR[n].id] = true;
+}
+// Units were first keyed by position, in this order.
+const OLD_UNIT_ORDER = ["ps","pc","im","pa"];
+function migrateUnitKeys(){
+  for(const k of Object.keys(S.gunlocked)) if(/^\d+$/.test(k)){
+    const id = OLD_UNIT_ORDER[k];
+    if(id && S.gunlocked[id]===undefined) S.gunlocked[id] = S.gunlocked[k];
+    delete S.gunlocked[k];
+  }
 }
 function topUnit(){ let n=0; while(n+1<GRAMMAR.length && gOpen(n+1)) n++; return n; }
 function gbump(it, ok){
@@ -828,14 +888,14 @@ function parent(){
     ].join("<br>");
   };
   app.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.u; if(confirm(`לפתוח את שלב ${n} עכשיו?`)){ S.unlocked[n]=true; save(); render(); } });
-  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.go; if(confirm(`לפתוח את יחידה ${n+1} עכשיו?`)){ S.gunlocked[n]=true; save(); render(); } });
+  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.go; if(confirm(`לפתוח את יחידה ${n+1} עכשיו?`)){ S.gunlocked[GRAMMAR[n].id]=true; save(); render(); } });
   app.querySelectorAll("[data-gc]").forEach(b=>b.onclick=()=>{
     const n=+b.dataset.gc, u=GRAMMAR[n];
     if(!confirm(`לסגור את יחידה ${n+1}?`)) return;
     if(confirm(`למחוק גם את ההתקדמות ביחידה ${n+1}? כדאי אם רק בדקת אותה.`))
       u.items.forEach(it=>{ delete S.gscore[it.id]; delete S.gwrong[it.id]; delete S.gseen[it.id]; });
-    delete S.gunlocked[n];
-    if(gOpen(n)) S.gunlocked[n]=false;
+    delete S.gunlocked[u.id];
+    if(gOpen(n)) S.gunlocked[u.id]=false;
     save(); render();
   });
   app.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{
