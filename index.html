@@ -228,6 +228,7 @@ function normalize(){
   S.seen = S.seen || {}; S.forgot = S.forgot || {}; S.lastReview = S.lastReview || "";
   S.gscore = S.gscore || {}; S.gwrong = S.gwrong || {}; S.gseen = S.gseen || {}; S.gunlocked = S.gunlocked || {};
   migrateUnitKeys();
+  keepOpenUnits();
   S.unlocked = S.unlocked || {};
   S.level = S.level >= 1 && S.level <= LEVELS.length && isOpen(S.level) ? S.level : 1;
   keepOpenLevels();
@@ -242,7 +243,7 @@ function keepOpenLevels(){
 function setLevel(n){ S.level = n; useLevel(n); save(); go({name:"home"}); }
 function writeLocal(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
 function save(){
-  keepOpenLevels();
+  keepOpenLevels(); keepOpenUnits();
   S.updated = new Date().toISOString();
   writeLocal();
   pending = true;
@@ -705,13 +706,19 @@ const gsc = it => S.gscore[it.id] || 0;
 const gknown = u => u.items.filter(it => gsc(it) >= MASTER).length;
 const gtried = u => u.items.filter(it => gsc(it) >= 1).length;               // answered right at least once
 const gpoints = u => u.items.reduce((t, it) => t + gsc(it), 0) / (u.items.length * MASTER); // 0..1, grows with every right answer
-// All units are open; a parent can close one (S.gunlocked[unit id] === false).
-function gOpen(n){ return n===0 || S.gunlocked[GRAMMAR[n].id] !== false; }
+// Unit n+1 opens with the words: at UNLOCK known words in word level n.
+// S.gunlocked[unit id]: true = opened (by a parent, or kept open once reached), false = closed by a parent, unset = automatic.
+const unitReady = n => known(LEVEL_WORDS[Math.min(n, LEVEL_WORDS.length)-1]) >= UNLOCK;
+function gOpen(n){ return n===0 || (S.gunlocked[GRAMMAR[n].id] ?? unitReady(n)); }
+function keepOpenUnits(){
+  for(let n=1; n<GRAMMAR.length; n++)
+    if(S.gunlocked[GRAMMAR[n].id]===undefined && unitReady(n)) S.gunlocked[GRAMMAR[n].id] = true;
+}
 // Units were first keyed by position, in this order.
 const OLD_UNIT_ORDER = ["ps","pc","im","pa"];
 function migrateUnitKeys(){
-  // Units used to unlock one by one; those unlock/close marks no longer apply.
-  if(!S.gfree){ S.gunlocked = {}; S.gfree = true; }
+  // Units used to unlock by sentence progress; those unlock/close marks no longer apply.
+  if(!S.gbywords){ S.gunlocked = {}; S.gbywords = true; }
   for(const k of Object.keys(S.gunlocked)) if(/^\d+$/.test(k)){
     const id = OLD_UNIT_ORDER[k];
     if(id && S.gunlocked[id]===undefined) S.gunlocked[id] = S.gunlocked[k];
@@ -749,11 +756,11 @@ function grammarCard(){
 function grammarScreen(){
   app.innerHTML = `
   <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">משפטים וזמנים</span></div>
-  <p class="note">כל יחידה מלמדת זמן אחד. אפשר לעבור בין היחידות בחופשיות, ומומלץ ללכת לפי הסדר. משפט "נתפס" אחרי 3 תשובות נכונות.</p>
+  <p class="note">כל יחידה מלמדת זמן אחד. יחידה חדשה נפתחת כשיודעים ${UNLOCK} מילים בשלב המילים המתאים. משפט "נתפס" אחרי 3 תשובות נכונות.</p>
   <div class="weeks">${GRAMMAR.map((u,n)=>{ const o=gOpen(n), k=gknown(u), p=Math.round(gpoints(u)*100);
     return `<button class="week ${k===u.items.length?'done':''}" data-g="${n}" ${o?'':'disabled'}>
       <span class="num">${o?n+1:'🔒'}</span>
-      <span class="t"><b>${u.name} · <span class="en">${esc(u.short)}</span></b><span>${gstats(u)}</span><span class="mini"><i style="width:${p}%"></i></span></span>
+      <span class="t"><b>${u.name} · <span class="en">${esc(u.short)}</span></b><span>${o ? gstats(u) : `נפתחת כשתדע ${UNLOCK} מילים בשלב ${Math.min(n, LEVEL_WORDS.length)} (עכשיו: ${known(LEVEL_WORDS[Math.min(n, LEVEL_WORDS.length)-1])})`}</span><span class="mini"><i style="width:${p}%"></i></span></span>
     </button>`; }).join("")}</div>`;
   app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
   app.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>go({name:"gunit", n:+b.dataset.g}));
@@ -890,13 +897,14 @@ function parent(){
     ].join("<br>");
   };
   app.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.u; if(confirm(`לפתוח את שלב ${n} עכשיו?`)){ S.unlocked[n]=true; save(); render(); } });
-  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.go; if(confirm(`לפתוח את יחידה ${n+1} עכשיו?`)){ delete S.gunlocked[GRAMMAR[n].id]; save(); render(); } });
+  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.go; if(confirm(`לפתוח את יחידה ${n+1} עכשיו?`)){ S.gunlocked[GRAMMAR[n].id]=true; save(); render(); } });
   app.querySelectorAll("[data-gc]").forEach(b=>b.onclick=()=>{
     const n=+b.dataset.gc, u=GRAMMAR[n];
     if(!confirm(`לסגור את יחידה ${n+1}?`)) return;
     if(confirm(`למחוק גם את ההתקדמות ביחידה ${n+1}? כדאי אם רק בדקת אותה.`))
       u.items.forEach(it=>{ delete S.gscore[it.id]; delete S.gwrong[it.id]; delete S.gseen[it.id]; });
-    S.gunlocked[u.id]=false;
+    delete S.gunlocked[u.id];
+    if(gOpen(n)) S.gunlocked[u.id]=false;
     save(); render();
   });
   app.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{
