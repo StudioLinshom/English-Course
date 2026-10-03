@@ -209,7 +209,8 @@ function normalize(){
   S.level = S.level >= 1 && S.level <= LEVELS.length && isOpen(S.level) ? S.level : 1;
   useLevel(S.level);
 }
-function isOpen(n){ return n===1 || !!S.unlocked[n] || known(LEVEL_WORDS[n-2]) >= UNLOCK; }
+// S.unlocked[n]: true = opened by a parent, false = closed by a parent, unset = opens at UNLOCK words.
+function isOpen(n){ return n===1 || (S.unlocked[n] ?? known(LEVEL_WORDS[n-2]) >= UNLOCK); }
 function setLevel(n){ S.level = n; useLevel(n); save(); go({name:"home"}); }
 function writeLocal(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
 function save(){
@@ -343,6 +344,7 @@ function nextLevelNote(k){
   const n = S.level+1;
   if(n > LEVELS.length) return "";
   if(isOpen(n)) return k >= UNLOCK ? `<button class="mode next" data-a="next"><b>שלב ${n} פתוח! 🎉</b><span>100 מילים חדשות מחכות לך. אפשר לחזור לשלב הזה בכל רגע.</span></button>` : "";
+  if(S.unlocked[n]===false) return "";
   return `<p class="note">עוד ${UNLOCK-k} מילים כדי לפתוח את שלב ${n}</p>`;
 }
 function weekList(w){ return w===8 ? ALL : ALL.filter(x=>x.week===w); }
@@ -484,10 +486,10 @@ function parent(){
   <h2>כל השלבים</h2>
   <div class="wordlist">
     ${LEVELS.map(l=>{ const lw=LEVEL_WORDS[l.n-1], o=isOpen(l.n);
-      return `<div class="wl"><span>שלב ${l.n}${o?'':' 🔒'}</span><b>${known(lw)} / ${lw.length}</b>${o?'':`<button class="mk" data-u="${l.n}">פתח</button>`}</div>`; }).join("")}
+      return `<div class="wl"><span>שלב ${l.n}${o?'':' 🔒'}</span><b>${known(lw)} / ${lw.length}</b>${l.n===1?'':o?`<button class="mk" data-c="${l.n}">סגור</button>`:`<button class="mk" data-u="${l.n}">פתח</button>`}</div>`; }).join("")}
     <div class="wl"><span><b>סה"כ מילים שהוא יודע</b></span><b>${known(EVERY)} / ${EVERY.length}</b></div>
   </div>
-  <p class="note">שלב חדש נפתח כשיודעים ${UNLOCK} מילים מהשלב הקודם. אפשר גם לפתוח שלב ידנית.</p>
+  <p class="note">שלב חדש נפתח כשיודעים ${UNLOCK} מילים מהשלב הקודם. אפשר גם לפתוח או לסגור שלב ידנית. שלב שנסגר ייפתח שוב לבד כשיגיע ל-${UNLOCK} מילים בשלב הקודם (אם כבר עבר את זה, הוא יישאר סגור עד שתפתח אותו).</p>
   <h2>מילים שהכי קשות לו</h2>
   ${hard.length?`<div class="wordlist">${hard.map(x=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="note" style="margin:0">${x.n} טעויות</span></div>`).join("")}</div>
   <p class="note">את המילים האלה כדאי לשלב השבוע ב"מילה של היום" ובשיחה.</p>`:`<p class="note">עוד אין טעויות רשומות.</p>`}
@@ -509,6 +511,19 @@ function parent(){
     ].join("<br>");
   };
   app.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.u; if(confirm(`לפתוח את שלב ${n} עכשיו?`)){ S.unlocked[n]=true; save(); render(); } });
+  app.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{
+    const n=+b.dataset.c;
+    if(!confirm(`לסגור את שלב ${n}?`)) return;
+    if(confirm(`למחוק גם את ההתקדמות בשלב ${n}? כדאי אם רק בדקת אותו.`)){
+      LEVEL_WORDS[n-1].forEach(x=>{ delete S.score[x.en]; delete S.wrong[x.en]; });
+      delete S.placedLv[n];
+    }
+    // Back to opening automatically, unless he already passed the threshold.
+    delete S.unlocked[n];
+    if(isOpen(n)) S.unlocked[n]=false;
+    while(!isOpen(S.level)) S.level--;
+    useLevel(S.level); save(); render();
+  });
   app.querySelector('[data-a="reset"]').onclick=()=>{ if(confirm("למחוק את כל ההתקדמות ולהתחיל מחדש?")){ S=fresh(); useLevel(1); save(); go({name:"home"}); } };
 }
 
