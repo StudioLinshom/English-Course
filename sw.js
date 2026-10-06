@@ -1,5 +1,5 @@
 // Bump VERSION when shipping changes so old caches are dropped.
-const VERSION = "v12";
+const VERSION = "v13";
 const CACHE = "vocab100-" + VERSION;
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
