@@ -71,6 +71,8 @@ h2{font-size:18px;margin:26px 0 10px}
 .field.en{text-align:left;letter-spacing:1px}
 .result .code{font-size:40px;letter-spacing:2px;margin:12px 0}
 details.note{margin-top:22px}
+.wl.fam small{display:block;color:var(--muted);font-size:13px;font-weight:400}
+.tag{font-size:13px;color:var(--field);font-weight:600}
 details.note summary{cursor:pointer}
 .gbar{background:var(--line);margin:12px 0 0}
 .rule{background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:14px 16px}
@@ -226,7 +228,9 @@ const API = "https://script.google.com/macros/s/AKfycbx7OlcWD9IdMyp_s0ngiI7V1r45
 const LEGACY_KEY = "b936d1c344f0f173a3fc6df1eb1fca73", LEGACY_LS = "vocab100-progress";
 const LS_USERS = "vocab-users", LS_CUR = "vocab-current";
 const lsKey = u => "vocab100-progress:" + u;
-let USER = null, USERNAME = "", parentOk = null; // parentOk = the user whose parent screen was unlocked
+let USER = null, USERNAME = "";
+const parentOk = new Set(); // children whose parent screen is unlocked right now
+const LS_INVITE = "vocab-invite";
 let saveTimer = null, retryTimer = null, syncState = "offline", pending = false;
 const SYNC_TEXT = {ok:"מסונכרן", saving:"שומר...", offline:"לא מחובר"};
 function setSync(st){
@@ -328,8 +332,8 @@ async function api(body){
   const r = await fetch(API, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(body)});
   return r.json();
 }
-async function pinHash(pin){
-  const bytes = new TextEncoder().encode(USER + ":" + pin);
+async function pinHash(pin, u = USER){
+  const bytes = new TextEncoder().encode(u + ":" + pin);
   if(window.crypto && crypto.subtle){
     const h = await crypto.subtle.digest("SHA-256", bytes);
     return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join("");
@@ -337,15 +341,42 @@ async function pinHash(pin){
   let h = 5381; for(const b of bytes) h = ((h<<5) + h + b) >>> 0; return "d" + h;
 }
 // Makes u the active user: sends the previous user's pending save first so it can't land on the new one.
-async function useUser(u, name){
+async function useUser(u, name, next = "home"){
   if(pending && USER) await push();
   clearTimeout(saveTimer); clearTimeout(retryTimer); pending = false;
   USER = u; USERNAME = name || (deviceUsers().find(x=>x.u===u)||{}).name || "";
-  parentOk = null;
   rememberUser(u, USERNAME); lsSet(LS_CUR, u);
   S = fresh(); loadLocal();
-  go({name:"home"});
+  go({name:next});
   pull();
+}
+const localData = u => { try{ return JSON.parse(lsGet(lsKey(u)) || "{}"); }catch(e){ return {}; } };
+// One parent PIN opens every child on this device that has the same PIN.
+async function unlockFamily(pin){
+  parentOk.add(USER);
+  for(const x of deviceUsers()){
+    if(x.u === USER) continue;
+    const d = localData(x.u);
+    if(d.pinHash && d.pinHash === await pinHash(pin, x.u)) parentOk.add(x.u);
+  }
+}
+// Pulls the other children's latest progress so the family list shows what they did on their own phones.
+let familyFetchedAt = 0;
+async function refreshFamily(){
+  if(Date.now() - familyFetchedAt < 60000) return;
+  familyFetchedAt = Date.now();
+  let changed = false;
+  await Promise.all(deviceUsers().filter(x=>x.u!==USER).map(async x=>{
+    try{
+      const r = await fetch(API + "?u=" + encodeURIComponent(x.u), {cache:"no-store"});
+      const res = await r.json();
+      if(!res.ok) return;
+      if(res.name && res.name !== x.name){ rememberUser(x.u, res.name); changed = true; }
+      const d = res.data || {}, local = localData(x.u);
+      if(d.updated && (!local.updated || d.updated > local.updated)){ lsSet(lsKey(x.u), JSON.stringify(Object.assign(fresh(), d))); changed = true; }
+    }catch(e){}
+  }));
+  if(changed && view.name === "parent") render();
 }
 async function joinWithCode(code){
   code = normCode(code);
@@ -450,7 +481,7 @@ function render(){
 }
 
 function home(){
-  parentOk = null; // leaving the parent screen locks it again
+  parentOk.clear(); // leaving the parent screen locks it again
   const k = known(ALL);
   app.innerHTML = `
   <div class="who"><span>שלום ${esc(USERNAME)} 👋</span><button class="ghost sm" data-a="users">החלפת משתמש</button></div>
@@ -969,9 +1000,10 @@ function welcome(){
   <h2>משתמש חדש</h2>
   <div class="form">
     <label>שם הילד או הילדה<input class="field" id="nm" maxlength="30"></label>
-    <label>קוד הזמנה (מקבלים ממי שהזמין אתכם)<input class="field en" id="inv" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+    <label>קוד הזמנה (מקבלים ממי שהזמין אתכם)<input class="field en" id="inv" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(lsGet(LS_INVITE) || "")}"></label>
     <label>קוד הורה: 4 עד 8 ספרות, לכניסה למסך ההורה<input class="field en" id="p1" type="password" inputmode="numeric" autocomplete="new-password"></label>
     <label>שוב את קוד ההורה<input class="field en" id="p2" type="password" inputmode="numeric" autocomplete="new-password"></label>
+    ${list.length ? `<p class="note" style="margin:0">יש לכם כבר ילדים באפליקציה? השתמשו באותו קוד הורה, ומסך ההורה ייפתח לכולם יחד.</p>` : ""}
     <button class="btn go wide" data-a="create">יצירת משתמש</button>
   </div>`;
   app.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>useUser(b.dataset.pick));
@@ -990,6 +1022,7 @@ function welcome(){
     try{
       const j = await api({action:"create", invite, name});
       if(!j.ok) throw new Error(j.error);
+      lsSet(LS_INVITE, invite);
       await useUser(j.u, j.name);
       S.pinHash = await pinHash(p1); save();
       go({name:"created"});
@@ -1040,7 +1073,7 @@ function pinScreen(){
   app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
   const pin = document.getElementById("pin"); pin.focus();
   const check = async()=>{
-    if(await pinHash(pin.value) === S.pinHash){ parentOk = USER; go({name:"parent"}); }
+    if(await pinHash(pin.value) === S.pinHash){ await unlockFamily(pin.value); go({name:"parent"}); }
     else go({name:"pin", err:"הקוד לא נכון."});
   };
   app.querySelector('[data-a="ok"]').onclick=check;
@@ -1070,23 +1103,37 @@ function pinSetScreen(){
     if(!/^\d{4,8}$/.test(p1)) return go({name:"pinset", err:"הקוד צריך להיות 4 עד 8 ספרות."});
     if(p1 !== p2) return go({name:"pinset", err:"שני הקודים לא זהים."});
     S.pinHash = await pinHash(p1); save();
-    parentOk = USER; go({name:"parent"}); flash("קוד ההורה נשמר");
+    await unlockFamily(p1); go({name:"parent"}); flash("קוד ההורה נשמר");
   };
 }
 
-function openParent(){ go({name: parentOk===USER ? "parent" : S.pinHash ? "pin" : "pinset"}); }
+function openParent(){ go({name: parentOk.has(USER) ? "parent" : S.pinHash ? "pin" : "pinset"}); }
+
+function familySection(){
+  const atLeast3 = m => Object.values(m || {}).filter(v => v >= MASTER).length;
+  const rows = deviceUsers().map(x=>{
+    const d = x.u === USER ? S : localData(x.u), last = (d.days || []).slice(-1)[0];
+    const btn = x.u === USER ? `<span class="tag">מוצג עכשיו</span>` : `<button class="mk" data-manage="${x.u}">ניהול${parentOk.has(x.u) ? "" : " 🔒"}</button>`;
+    return `<div class="wl fam"><span><b>${esc(x.name)}</b><small>${atLeast3(d.score)} מילים · ${atLeast3(d.gscore)} משפטים · ${last ? "תרגול אחרון " + last.split("-").reverse().slice(0,2).join("/") : "עוד לא תרגל"}</small></span>${btn}</div>`;
+  }).join("");
+  return `<h2>המשפחה</h2><div class="wordlist">${rows}</div>
+  <div class="links"><button class="ghost" data-a="addkid">הוספת ילד</button></div>
+  <p class="note">כל ילד מנוהל בנפרד. ילדים עם אותו קוד הורה נפתחים יחד, בלי להקליד שוב.</p>`;
+}
 
 function parent(){
-  if(parentOk !== USER) return openParent();
+  if(!parentOk.has(USER)) return openParent();
+  refreshFamily();
   const hard = Object.entries(S.wrong).sort((a,b)=>b[1]-a[1]).slice(0,15)
     .map(([en,n])=>{ const x=EVERY.find(w=>w.en===en); return x?{...x,n}:null; }).filter(Boolean);
   const last = S.days.slice(-14).reverse();
   app.innerHTML = `
   <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">מסך הורה · ${esc(USERNAME)}</span></div>
-  <h2>המשתמש</h2>
+  ${familySection()}
+  <h2>${esc(USERNAME)}</h2>
   <div class="wordlist">
     <div class="wl"><span>שם</span><b>${esc(USERNAME)}</b><button class="mk" data-a="rename">שינוי</button></div>
-    <div class="wl"><span>קוד משתמש</span><b class="en">${fmtCode(USER)}</b><button class="mk" data-a="share">העתקת קישור</button></div>
+    <div class="wl"><span>קוד משתמש</span><b class="en" style="white-space:nowrap">${fmtCode(USER)}</b><button class="mk" data-a="share">העתקת קישור</button></div>
   </div>
   <p class="note">כדי לראות את ההתקדמות מהטלפון שלכם, פתחו בו את הקישור, או הקלידו את הקוד במסך הכניסה. שמרו את הקוד: בלעדיו אי אפשר לחזור למשתמש.</p>
   <div class="links"><button class="ghost" data-a="newpin">שינוי קוד הורה</button><button class="ghost" data-a="forget">הסרת המשתמש מהטלפון הזה</button></div>
@@ -1165,6 +1212,8 @@ function parent(){
     try{ await navigator.clipboard.writeText(link); flash("הקישור הועתק"); }catch(e){ prompt("העתיקו את הקישור:", link); }
   };
   app.querySelector('[data-a="newpin"]').onclick=()=>go({name:"pinset"});
+  app.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>{ const u=b.dataset.manage; useUser(u, null, parentOk.has(u) ? "parent" : "pin"); });
+  app.querySelector('[data-a="addkid"]').onclick=()=>go({name:"welcome"});
   app.querySelector('[data-a="forget"]').onclick=async()=>{
     if(!confirm(`להסיר את ${USERNAME} מהטלפון הזה? ההתקדמות נשמרת בענן, ואפשר לחזור עם קוד המשתמש ${fmtCode(USER)}.`)) return;
     if(pending) await push();
