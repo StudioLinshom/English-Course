@@ -2,6 +2,7 @@
 //
 //   GET  ?u=CODE                              -> {ok, name, data}
 //   POST {action:"create", invite, name}      -> {ok, u, name}
+//   POST {action:"create", sibling, name}     -> {ok, u, name}  (sibling = an existing child's code)
 //   POST {action:"save", u, data}             -> {ok}
 //   POST {action:"rename", u, name}           -> {ok}
 //   POST {action:"checkInvite", invite}       -> {ok}
@@ -151,7 +152,9 @@ function doPost(e) {
     const action = body.action;
     if (action === 'create') {
       const s = settings_();
-      if (normCode_(body.invite) !== normCode_(s.invite)) return json_({ error: 'bad invite' });
+      // A parent adding a sibling proves membership with an existing child's code instead of the invite.
+      const sibling = body.sibling && findRow_(normCode_(body.sibling));
+      if (!sibling && normCode_(body.invite) !== normCode_(s.invite)) return json_({ error: 'bad invite' });
       const name = String(body.name || '').trim().slice(0, 30);
       if (!name) return json_({ error: 'missing name' });
       if (users_().getLastRow() - 1 >= Number(s.max_users || 100)) return json_({ error: 'too many users' });

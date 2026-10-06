@@ -409,6 +409,12 @@ async function boot(){
     history.replaceState(null, "", location.pathname + location.search);
     try{ return await joinWithCode(m[1]); }catch(e){ return go({name:"welcome", err:errText(e)}); }
   }
+  const inv = location.hash.match(/invite=([A-Za-z0-9]+)/);
+  if(inv){
+    history.replaceState(null, "", location.pathname + location.search);
+    lsSet(LS_INVITE, inv[1].toUpperCase());
+    return go({name:"welcome", invited:true});
+  }
   const cur = lsGet(LS_CUR);
   if(cur && deviceUsers().some(x=>x.u===cur)) return useUser(cur);
   if(lsGet(LEGACY_LS)){ try{ return await claimLegacy(); }catch(e){} }
@@ -992,6 +998,7 @@ function welcome(){
   <section class="board"><h1>100 מילים באנגלית</h1><p class="sub">כל ילד מקבל משתמש משלו, וההתקדמות שלו נשמרת בנפרד.</p></section>
   ${view.err ? `<p class="feedback bad">${esc(view.err)}</p>` : ""}
   ${list.length ? `<h2>משתמשים בטלפון הזה</h2><div class="weeks">${list.map(x=>`<button class="week" data-pick="${x.u}"><span class="num">${esc(x.name.charAt(0))}</span><span class="t"><b>${esc(x.name)}</b></span></button>`).join("")}</div>` : ""}
+  ${view.invited ? `<p class="note">הוזמנתם! מלאו את הפרטים למטה תחת "משתמש חדש". קוד ההזמנה כבר ממולא.</p>` : ""}
   <h2>יש לי קוד משתמש</h2>
   <div class="form">
     <input class="field en" id="code" placeholder="ABCDE-23456" autocomplete="off" autocapitalize="characters" spellcheck="false">
@@ -1000,7 +1007,8 @@ function welcome(){
   <h2>משתמש חדש</h2>
   <div class="form">
     <label>שם הילד או הילדה<input class="field" id="nm" maxlength="30"></label>
-    <label>קוד הזמנה (מקבלים ממי שהזמין אתכם)<input class="field en" id="inv" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(lsGet(LS_INVITE) || "")}"></label>
+    ${list.length ? `<p class="note" style="margin:0">מוסיפים ילד למשפחה, אז לא צריך קוד הזמנה.</p>`
+      : `<label>קוד הזמנה (מקבלים ממי שהזמין אתכם)<input class="field en" id="inv" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(lsGet(LS_INVITE) || "")}"></label>`}
     <label>קוד הורה: 4 עד 8 ספרות, לכניסה למסך ההורה<input class="field en" id="p1" type="password" inputmode="numeric" autocomplete="new-password"></label>
     <label>שוב את קוד ההורה<input class="field en" id="p2" type="password" inputmode="numeric" autocomplete="new-password"></label>
     ${list.length ? `<p class="note" style="margin:0">יש לכם כבר ילדים באפליקציה? השתמשו באותו קוד הורה, ומסך ההורה ייפתח לכולם יחד.</p>` : ""}
@@ -1013,16 +1021,18 @@ function welcome(){
     try{ await joinWithCode(document.getElementById("code").value); }catch(err){ fail(errText(err)); }
   };
   app.querySelector('[data-a="create"]').onclick=async e=>{
-    const name = document.getElementById("nm").value.trim(), invite = document.getElementById("inv").value;
+    const name = document.getElementById("nm").value.trim();
+    const invEl = document.getElementById("inv"), invite = invEl ? invEl.value : "";
+    const sibling = list.length ? (USER || list[0].u) : undefined;
     const p1 = document.getElementById("p1").value, p2 = document.getElementById("p2").value;
     if(!name) return fail("צריך לכתוב שם.");
     if(!/^\d{4,8}$/.test(p1)) return fail("קוד ההורה צריך להיות 4 עד 8 ספרות.");
     if(p1 !== p2) return fail("שני קודי ההורה לא זהים.");
     e.target.disabled = true;
     try{
-      const j = await api({action:"create", invite, name});
+      const j = await api({action:"create", invite, sibling, name});
       if(!j.ok) throw new Error(j.error);
-      lsSet(LS_INVITE, invite);
+      if(invite) lsSet(LS_INVITE, invite);
       await useUser(j.u, j.name);
       S.pinHash = await pinHash(p1); save();
       go({name:"created"});
