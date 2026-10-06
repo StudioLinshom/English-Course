@@ -62,6 +62,14 @@ h2{font-size:18px;margin:26px 0 10px}
 .mode.review{margin-top:12px}
 .mode.review.due{border-color:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb, var(--sun) 35%, transparent)}
 .mode.gram{margin-top:12px}
+.mascot.emoji{display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.buddy{cursor:pointer}
+.bubble small{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}
+.buddies{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.bud{background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:10px 2px 8px;display:grid;justify-items:center;gap:4px;font-size:14px}
+.bud.on{border-color:var(--field);background:var(--good-bg);box-shadow:0 0 0 3px color-mix(in srgb,var(--field) 25%,transparent)}
+.bud.on .mascot{animation:jump .5s}
+@media (max-width:360px){.buddies{grid-template-columns:repeat(3,1fr)}}
 /* fun */
 .board{background:linear-gradient(135deg,var(--field) 0%,var(--field-2) 100%)}
 .board::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
@@ -105,7 +113,7 @@ input.type.good,.built.good{border-color:var(--field-2);background:var(--good-bg
 .mode.next{animation:wiggle 2.5s ease-in-out infinite}
 @keyframes wiggle{0%,90%,100%{transform:rotate(0)}93%{transform:rotate(-1.5deg)}96%{transform:rotate(1.5deg)}}
 @media (prefers-reduced-motion:reduce){
-  .buddy .mascot,#cheer .mascot,.res-buddy .mascot,.opt.wrong,.opt.right,.shake,.good,.n.grow,.mode.next{animation:none!important}
+  .buddy .mascot,#cheer .mascot,.res-buddy .mascot,.bud.on .mascot,.opt.wrong,.opt.right,.shake,.good,.n.grow,.mode.next{animation:none!important}
   .stars span{animation:none;transform:none}
   #cheer{transition:none}
 }
@@ -526,8 +534,21 @@ const ENCOURAGE = ["כמעט! בפעם הבאה זה שלך","לא נורא, כ�
 const pick = a => a[Math.floor(Math.random()*a.length)];
 const calm = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
 
-// ניצן, the app's sprout buddy.
-function mascot(mood = "", size = 64){
+// The learning buddy each child picks. ניצן (drawn in SVG) is the default; the rest are emoji
+// that exist on older Android phones too.
+const BUDDIES = [
+  {id:"nitzan", icon:"🌱", name:"ניצן"}, {id:"robot", icon:"🤖", name:"רובי"}, {id:"dragon", icon:"🐉", name:"דרקו"},
+  {id:"fox", icon:"🦊", name:"שועלי"}, {id:"panda", icon:"🐼", name:"פנדי"}, {id:"lion", icon:"🦁", name:"לאו"},
+  {id:"cat", icon:"🐱", name:"מיצי"}, {id:"dog", icon:"🐶", name:"בוני"}, {id:"unicorn", icon:"🦄", name:"קשתית"},
+  {id:"dino", icon:"🦖", name:"רקסי"}, {id:"shark", icon:"🦈", name:"שארקי"}, {id:"owl", icon:"🦉", name:"חכמון"},
+  {id:"pixel", icon:"👾", name:"פיקסל"}, {id:"alien", icon:"👽", name:"זיגי"}, {id:"ball", icon:"⚽", name:"גולי"},
+  {id:"rocket", icon:"🚀", name:"טיל"},
+];
+const buddyOf = d => BUDDIES.find(b => b.id === (d && d.buddy)) || BUDDIES[0];
+
+function mascot(mood = "", size = 64, b = buddyOf(S)){
+  if(b.id !== "nitzan")
+    return `<span class="mascot emoji ${mood}" style="font-size:${Math.round(size*.8)}px;width:${size}px;height:${size}px" aria-hidden="true">${b.icon}</span>`;
   const mouth = mood === "sad" ? "M41 72 Q50 66 59 72" : "M39 67 Q50 79 61 67";
   return `<svg class="mascot ${mood}" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true">
     <path d="M50 26 C45 12 34 7 25 11 C33 16 41 20 50 27 Z" fill="#2E9A63"/>
@@ -618,7 +639,7 @@ function celebrateResult(right, total){
 }
 
 function homeTip(k){
-  if(!S.days.length) return `היי ${USERNAME}! אני ניצן 🌱 בוא נתחיל ללמוד ביחד!`;
+  if(!S.days.length) return `היי ${USERNAME}! אני ${buddyOf(S).name} ${buddyOf(S).icon} בוא נתחיל ללמוד ביחד!`;
   const st = streak();
   if(st >= 2) return `🔥 ${st} ימים ברצף! שומרים על הרצף היום?`;
   const left = UNLOCK - k;
@@ -634,6 +655,7 @@ function render(){
   if(view.name==="welcome") return welcome();
   if(view.name==="created") return created();
   if(view.name==="users") return usersScreen();
+  if(view.name==="buddy" && USER) return buddyScreen();
   if(view.name==="pin") return pinScreen();
   if(view.name==="pinset") return pinSetScreen();
   if(!USER) return welcome();
@@ -661,7 +683,7 @@ function home(){
     <div class="bar"><i style="width:${k}%"></i></div>
     <div class="stats"><span>🔥 רצף: ${streak()} ימים</span><span>📅 השבוע: ${weekDays()} מתוך 5 ימים</span></div>
   </section>
-  <div class="buddy">${mascot("happy", 58)}<div class="bubble">${esc(homeTip(k))}</div></div>
+  <div class="buddy" data-a="buddy" role="button" tabindex="0" aria-label="החלפת חבר">${mascot("happy", 58)}<div class="bubble">${esc(homeTip(k))}<small>✏️ החלפת חבר</small></div></div>
   <div class="levels">${LEVELS.map(l=>{ const o=isOpen(l.n), done=known(LEVEL_WORDS[l.n-1])===LEVEL_WORDS[l.n-1].length;
     return `<button class="lv ${l.n===S.level?'cur':''}" data-l="${l.n}" ${o?'':'disabled'}>${o?LEVEL_ICONS[l.n-1]+' ':'🔒 '}שלב ${l.n}${done?' ✓':''}</button>`; }).join("")}</div>
   ${nextLevelNote(k)}
@@ -686,6 +708,7 @@ function home(){
   const pl = app.querySelector('[data-a="place"]'); if(pl) pl.onclick=()=>start("place", ALL);
   app.querySelector('[data-a="parent"]').onclick=openParent;
   app.querySelector('[data-a="users"]').onclick=()=>go({name:"users"});
+  app.querySelector('[data-a="buddy"]').onclick=()=>go({name:"buddy"});
   app.querySelector('[data-a="sound"]').onclick=()=>{ lsSet(LS_SOUND, soundOn() ? "off" : null); render(); if(soundOn()) SFX.ok(); };
   if(grew){ confetti(40); SFX.star(); }
 }
@@ -1170,7 +1193,7 @@ function welcome(){
   app.innerHTML = `
   <section class="board"><h1>100 מילים באנגלית</h1><p class="sub">כל ילד מקבל משתמש משלו, וההתקדמות שלו נשמרת בנפרד.</p></section>
   ${view.err ? `<p class="feedback bad">${esc(view.err)}</p>` : ""}
-  ${list.length ? `<h2>משתמשים בטלפון הזה</h2><div class="weeks">${list.map(x=>`<button class="week" data-pick="${x.u}"><span class="num">${esc(x.name.charAt(0))}</span><span class="t"><b>${esc(x.name)}</b></span></button>`).join("")}</div>` : ""}
+  ${list.length ? `<h2>משתמשים בטלפון הזה</h2><div class="weeks">${list.map(x=>`<button class="week" data-pick="${x.u}"><span class="num ic">${buddyOf(localData(x.u)).icon}</span><span class="t"><b>${esc(x.name)}</b></span></button>`).join("")}</div>` : ""}
   ${view.invited ? `<p class="note">הוזמנתם! מלאו את הפרטים למטה תחת "משתמש חדש". קוד ההזמנה כבר ממולא.</p>` : ""}
   <h2>יש לי קוד משתמש</h2>
   <div class="form">
@@ -1229,11 +1252,27 @@ function created(){
   app.querySelector('[data-a="go"]').onclick=()=>go({name:"home"});
 }
 
+function buddyScreen(){
+  const cur = buddyOf(S).id;
+  app.innerHTML = `
+  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">בחירת חבר ללמידה</span></div>
+  <p class="note">החבר שלך יופיע במסך הבית ויעודד אותך בתרגול. אפשר להחליף בכל רגע.</p>
+  <div class="buddies">${BUDDIES.map(b=>`<button class="bud ${b.id===cur?'on':''}" data-b="${b.id}" aria-pressed="${b.id===cur}">${mascot("", 56, b)}<b>${b.name}</b></button>`).join("")}</div>
+  <button class="btn go wide" data-a="home2">סיימתי</button>`;
+  app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
+  app.querySelector('[data-a="home2"]').onclick=()=>go({name:"home"});
+  app.querySelectorAll("[data-b]").forEach(btn=>btn.onclick=()=>{
+    S.buddy = btn.dataset.b; save();
+    const b = buddyOf(S);
+    render(); SFX.ok(); cheer(`היי! אני ${b.name}!`);
+  });
+}
+
 function usersScreen(){
   const list = deviceUsers();
   app.innerHTML = `
   <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">מי מתרגל?</span></div>
-  <div class="weeks">${list.map(x=>`<button class="week ${x.u===USER?'done':''}" data-pick="${x.u}"><span class="num">${esc(x.name.charAt(0))}</span><span class="t"><b>${esc(x.name)}</b>${x.u===USER?'<span>מחובר עכשיו</span>':''}</span></button>`).join("")}</div>
+  <div class="weeks">${list.map(x=>`<button class="week ${x.u===USER?'done':''}" data-pick="${x.u}"><span class="num ic">${buddyOf(localData(x.u)).icon}</span><span class="t"><b>${esc(x.name)}</b>${x.u===USER?'<span>מחובר עכשיו</span>':''}</span></button>`).join("")}</div>
   <button class="btn no wide" data-a="add">הוספת משתמש</button>`;
   app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
   app.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=> b.dataset.pick===USER ? go({name:"home"}) : useUser(b.dataset.pick));
@@ -1297,7 +1336,7 @@ function familySection(){
   const rows = deviceUsers().map(x=>{
     const d = x.u === USER ? S : localData(x.u), last = (d.days || []).slice(-1)[0];
     const btn = x.u === USER ? `<span class="tag">מוצג עכשיו</span>` : `<button class="mk" data-manage="${x.u}">ניהול${parentOk.has(x.u) ? "" : " 🔒"}</button>`;
-    return `<div class="wl fam"><span><b>${esc(x.name)}</b><small>${atLeast3(d.score)} מילים · ${atLeast3(d.gscore)} משפטים · ${last ? "תרגול אחרון " + last.split("-").reverse().slice(0,2).join("/") : "עוד לא תרגל"}</small></span>${btn}</div>`;
+    return `<div class="wl fam"><span><b>${buddyOf(d).icon} ${esc(x.name)}</b><small>${atLeast3(d.score)} מילים · ${atLeast3(d.gscore)} משפטים · ${last ? "תרגול אחרון " + last.split("-").reverse().slice(0,2).join("/") : "עוד לא תרגל"}</small></span>${btn}</div>`;
   }).join("");
   return `<h2>המשפחה</h2><div class="wordlist">${rows}</div>
   <div class="links"><button class="ghost" data-a="addkid">הוספת ילד</button></div>
