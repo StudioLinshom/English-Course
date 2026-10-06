@@ -62,6 +62,18 @@ h2{font-size:18px;margin:26px 0 10px}
 .mode.review{margin-top:12px}
 .mode.review.due{border-color:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb, var(--sun) 35%, transparent)}
 .mode.gram{margin-top:12px}
+.who{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;font-weight:600}
+.ghost.sm{padding:4px 10px;font-size:14px}
+.board .sub{margin:6px 0 0;opacity:.95}
+.form{display:grid;gap:10px}
+.form label{display:grid;gap:4px;font-size:15px;color:var(--muted)}
+.field{width:100%;padding:12px;font-size:18px;border-radius:12px;border:2px solid var(--line);background:var(--paper);color:var(--ink)}
+.field.en{text-align:left;letter-spacing:1px}
+.result .code{font-size:40px;letter-spacing:2px;margin:12px 0}
+details.note{margin-top:22px}
+.wl.fam small{display:block;color:var(--muted);font-size:13px;font-weight:400}
+.tag{font-size:13px;color:var(--field);font-weight:600}
+details.note summary{cursor:pointer}
 .gbar{background:var(--line);margin:12px 0 0}
 .rule{background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:14px 16px}
 .rule p{margin:0 0 8px}
@@ -211,9 +223,14 @@ const MASTER = 3, ROUND = 10;
 /* ---------- state + storage ---------- */
 const fresh = () => ({score:{}, wrong:{}, days:[], placed:false, placedLv:{}, unlocked:{}, level:1, seen:{}, forgot:{}, lastReview:"", gscore:{}, gwrong:{}, gseen:{}, gunlocked:{}, updated:""});
 let S = fresh();
-const LS = "vocab100-progress";
 const API = "https://script.google.com/macros/s/AKfycbx7OlcWD9IdMyp_s0ngiI7V1r453A_nfY-pvUR0b-YUdtOmXxKqZTLJ193OyTaGN_16/exec";
-const KEY = "b936d1c344f0f173a3fc6df1eb1fca73";
+// The first, single-user version saved under this key; devices that still hold that data become Yoav's user.
+const LEGACY_KEY = "b936d1c344f0f173a3fc6df1eb1fca73", LEGACY_LS = "vocab100-progress";
+const LS_USERS = "vocab-users", LS_CUR = "vocab-current";
+const lsKey = u => "vocab100-progress:" + u;
+let USER = null, USERNAME = "";
+const parentOk = new Set(); // children whose parent screen is unlocked right now
+const LS_INVITE = "vocab-invite";
 let saveTimer = null, retryTimer = null, syncState = "offline", pending = false;
 const SYNC_TEXT = {ok:"מסונכרן", saving:"שומר...", offline:"לא מחובר"};
 function setSync(st){
@@ -221,7 +238,7 @@ function setSync(st){
   const el = document.getElementById("sync");
   if(el){ el.textContent = SYNC_TEXT[st]; el.dataset.s = st; }
 }
-function loadLocal(){ try{ const v = localStorage.getItem(LS); if(v) S = Object.assign(S, JSON.parse(v)); }catch(e){} normalize(); }
+function loadLocal(){ try{ const v = localStorage.getItem(lsKey(USER)); if(v) S = Object.assign(S, JSON.parse(v)); }catch(e){} normalize(); }
 // Fills fields added after launch and points WEEKS/ALL at the current level.
 function normalize(){
   S.placedLv = S.placedLv || {}; if(S.placed) S.placedLv[1] = true;
@@ -241,7 +258,7 @@ function keepOpenLevels(){
     if(S.unlocked[n]===undefined && known(LEVEL_WORDS[n-2]) >= UNLOCK) S.unlocked[n] = true;
 }
 function setLevel(n){ S.level = n; useLevel(n); save(); go({name:"home"}); }
-function writeLocal(){ try{ localStorage.setItem(LS, JSON.stringify(S)); }catch(e){} }
+function writeLocal(){ if(USER) lsSet(lsKey(USER), JSON.stringify(S)); }
 function save(){
   keepOpenLevels(); keepOpenUnits();
   S.updated = new Date().toISOString();
@@ -253,13 +270,13 @@ function save(){
 }
 async function push(){
   clearTimeout(retryTimer);
-  if(!pending) return;
+  if(!pending || !USER) return;
   setSync("saving");
-  const sent = S.updated;
+  const u = USER, sent = S.updated;
   try{
-    const r = await fetch(API, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({key:KEY, data:S})});
-    const j = await r.json();
+    const j = await api({action:"save", u, data:S});
     if(!j.ok) throw new Error(j.error||"save failed");
+    if(u !== USER) return; // switched user meanwhile
     if(S.updated === sent) pending = false;
     setSync(pending ? "saving" : "ok");
     if(pending) saveTimer = setTimeout(push, 1500);
@@ -269,10 +286,15 @@ async function push(){
   }
 }
 async function pull(){
+  if(!USER) return;
+  const u = USER;
   try{
-    const r = await fetch(API + "?key=" + encodeURIComponent(KEY), {cache:"no-store"});
-    const d = await r.json();
-    if(d.error) throw new Error(d.error);
+    const r = await fetch(API + "?u=" + encodeURIComponent(u), {cache:"no-store"});
+    const res = await r.json();
+    if(!res.ok) throw new Error(res.error||"load failed");
+    if(u !== USER) return; // switched user meanwhile
+    if(res.name && res.name !== USERNAME){ USERNAME = res.name; rememberUser(u, res.name); }
+    const d = res.data || {};
     if(d.updated && (!S.updated || d.updated > S.updated)){
       S = Object.assign(fresh(), d);
       normalize();
@@ -288,6 +310,110 @@ async function pull(){
   }
 }
 window.addEventListener("online", ()=>{ pending ? push() : pull(); });
+
+/* ---------- users ---------- */
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k, v){ try{ v===null ? localStorage.removeItem(k) : localStorage.setItem(k, v); }catch(e){} }
+function deviceUsers(){ try{ return JSON.parse(lsGet(LS_USERS) || "[]"); }catch(e){ return []; } }
+function rememberUser(u, name){
+  const list = deviceUsers(), i = list.findIndex(x=>x.u===u);
+  if(i<0) list.push({u, name}); else list[i].name = name;
+  lsSet(LS_USERS, JSON.stringify(list));
+}
+function forgetUser(u){
+  lsSet(LS_USERS, JSON.stringify(deviceUsers().filter(x=>x.u!==u)));
+  lsSet(lsKey(u), null);
+  if(lsGet(LS_CUR)===u) lsSet(LS_CUR, null);
+}
+const normCode = c => String(c||"").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const fmtCode = u => u.slice(0,5) + "-" + u.slice(5);
+const shareLink = () => location.origin + location.pathname + "#u=" + USER;
+async function api(body){
+  const r = await fetch(API, {method:"POST", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify(body)});
+  return r.json();
+}
+async function pinHash(pin, u = USER){
+  const bytes = new TextEncoder().encode(u + ":" + pin);
+  if(window.crypto && crypto.subtle){
+    const h = await crypto.subtle.digest("SHA-256", bytes);
+    return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join("");
+  }
+  let h = 5381; for(const b of bytes) h = ((h<<5) + h + b) >>> 0; return "d" + h;
+}
+// Makes u the active user: sends the previous user's pending save first so it can't land on the new one.
+async function useUser(u, name, next = "home"){
+  if(pending && USER) await push();
+  clearTimeout(saveTimer); clearTimeout(retryTimer); pending = false;
+  USER = u; USERNAME = name || (deviceUsers().find(x=>x.u===u)||{}).name || "";
+  rememberUser(u, USERNAME); lsSet(LS_CUR, u);
+  S = fresh(); loadLocal();
+  go({name:next});
+  pull();
+}
+const localData = u => { try{ return JSON.parse(lsGet(lsKey(u)) || "{}"); }catch(e){ return {}; } };
+// One parent PIN opens every child on this device that has the same PIN.
+async function unlockFamily(pin){
+  parentOk.add(USER);
+  for(const x of deviceUsers()){
+    if(x.u === USER) continue;
+    const d = localData(x.u);
+    if(d.pinHash && d.pinHash === await pinHash(pin, x.u)) parentOk.add(x.u);
+  }
+}
+// Pulls the other children's latest progress so the family list shows what they did on their own phones.
+let familyFetchedAt = 0;
+async function refreshFamily(){
+  if(Date.now() - familyFetchedAt < 60000) return;
+  familyFetchedAt = Date.now();
+  let changed = false;
+  await Promise.all(deviceUsers().filter(x=>x.u!==USER).map(async x=>{
+    try{
+      const r = await fetch(API + "?u=" + encodeURIComponent(x.u), {cache:"no-store"});
+      const res = await r.json();
+      if(!res.ok) return;
+      if(res.name && res.name !== x.name){ rememberUser(x.u, res.name); changed = true; }
+      const d = res.data || {}, local = localData(x.u);
+      if(d.updated && (!local.updated || d.updated > local.updated)){ lsSet(lsKey(x.u), JSON.stringify(Object.assign(fresh(), d))); changed = true; }
+    }catch(e){}
+  }));
+  if(changed && view.name === "parent") render();
+}
+async function joinWithCode(code){
+  code = normCode(code);
+  if(code.length < 10) throw new Error("bad code");
+  const r = await fetch(API + "?u=" + encodeURIComponent(code), {cache:"no-store"});
+  const res = await r.json();
+  if(!res.ok) throw new Error(res.error || "unknown user");
+  await useUser(code, res.name);
+}
+async function claimLegacy(){
+  const j = await api({action:"claim", key:LEGACY_KEY});
+  if(!j.ok) throw new Error(j.error || "claim failed");
+  const old = lsGet(LEGACY_LS);
+  if(old && !lsGet(lsKey(j.u))) lsSet(lsKey(j.u), old);
+  lsSet(LEGACY_LS, null);
+  await useUser(j.u, j.name);
+}
+const ERR = {
+  "unknown user": "הקוד לא נמצא. בדקו שהקלדתם אותו נכון.",
+  "bad code": "קוד משתמש הוא 10 תווים, למשל ABCDE-23456.",
+  "bad invite": "קוד ההזמנה לא נכון.",
+  "too many users": "הגענו למספר המשתמשים המרבי. פנו למי שהזמין אתכם.",
+  "missing name": "צריך לכתוב שם.",
+};
+const errText = e => ERR[e.message] || "אין חיבור לאינטרנט. נסו שוב.";
+async function boot(){
+  app.innerHTML = `<p class="note" style="text-align:center;margin-top:40px">טוען…</p>`;
+  const m = location.hash.match(/u=([A-Za-z0-9-]+)/);
+  if(m){
+    history.replaceState(null, "", location.pathname + location.search);
+    try{ return await joinWithCode(m[1]); }catch(e){ return go({name:"welcome", err:errText(e)}); }
+  }
+  const cur = lsGet(LS_CUR);
+  if(cur && deviceUsers().some(x=>x.u===cur)) return useUser(cur);
+  if(lsGet(LEGACY_LS)){ try{ return await claimLegacy(); }catch(e){} }
+  go({name:"welcome"});
+}
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible" && !pending) pull(); });
 
 const sc = en => S.score[en]||0;
@@ -337,6 +463,12 @@ const app = document.getElementById("app");
 let view = {name:"home"};
 function go(v){ view = v; render(); window.scrollTo(0,0); }
 function render(){
+  if(view.name==="welcome") return welcome();
+  if(view.name==="created") return created();
+  if(view.name==="users") return usersScreen();
+  if(view.name==="pin") return pinScreen();
+  if(view.name==="pinset") return pinSetScreen();
+  if(!USER) return welcome();
   if(view.name==="home") return home();
   if(view.name==="week") return weekScreen();
   if(view.name==="play") return play();
@@ -349,8 +481,10 @@ function render(){
 }
 
 function home(){
+  parentOk.clear(); // leaving the parent screen locks it again
   const k = known(ALL);
   app.innerHTML = `
+  <div class="who"><span>שלום ${esc(USERNAME)} 👋</span><button class="ghost sm" data-a="users">החלפת משתמש</button></div>
   <section class="board">
     <h1>100 מילים באנגלית · שלב ${S.level}</h1>
     <div class="big"><span class="n">${k}</span><span class="of">מתוך 100 מילים שאתה יודע</span></div>
@@ -379,7 +513,8 @@ function home(){
   app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"grammar"});
   const nx = app.querySelector('[data-a="next"]'); if(nx) nx.onclick=()=>setLevel(S.level+1);
   const pl = app.querySelector('[data-a="place"]'); if(pl) pl.onclick=()=>start("place", ALL);
-  app.querySelector('[data-a="parent"]').onclick=()=>go({name:"parent"});
+  app.querySelector('[data-a="parent"]').onclick=openParent;
+  app.querySelector('[data-a="users"]').onclick=()=>go({name:"users"});
 }
 
 function nextLevelNote(k){
@@ -851,12 +986,157 @@ function gresult(){
   app.querySelector('[data-a="again"]').onclick=()=>go({name:"gunit", n:v.n});
 }
 
+function welcome(){
+  const list = deviceUsers();
+  app.innerHTML = `
+  <section class="board"><h1>100 מילים באנגלית</h1><p class="sub">כל ילד מקבל משתמש משלו, וההתקדמות שלו נשמרת בנפרד.</p></section>
+  ${view.err ? `<p class="feedback bad">${esc(view.err)}</p>` : ""}
+  ${list.length ? `<h2>משתמשים בטלפון הזה</h2><div class="weeks">${list.map(x=>`<button class="week" data-pick="${x.u}"><span class="num">${esc(x.name.charAt(0))}</span><span class="t"><b>${esc(x.name)}</b></span></button>`).join("")}</div>` : ""}
+  <h2>יש לי קוד משתמש</h2>
+  <div class="form">
+    <input class="field en" id="code" placeholder="ABCDE-23456" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <button class="btn go wide" data-a="join">כניסה</button>
+  </div>
+  <h2>משתמש חדש</h2>
+  <div class="form">
+    <label>שם הילד או הילדה<input class="field" id="nm" maxlength="30"></label>
+    <label>קוד הזמנה (מקבלים ממי שהזמין אתכם)<input class="field en" id="inv" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(lsGet(LS_INVITE) || "")}"></label>
+    <label>קוד הורה: 4 עד 8 ספרות, לכניסה למסך ההורה<input class="field en" id="p1" type="password" inputmode="numeric" autocomplete="new-password"></label>
+    <label>שוב את קוד ההורה<input class="field en" id="p2" type="password" inputmode="numeric" autocomplete="new-password"></label>
+    ${list.length ? `<p class="note" style="margin:0">יש לכם כבר ילדים באפליקציה? השתמשו באותו קוד הורה, ומסך ההורה ייפתח לכולם יחד.</p>` : ""}
+    <button class="btn go wide" data-a="create">יצירת משתמש</button>
+  </div>`;
+  app.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>useUser(b.dataset.pick));
+  const fail = msg => go({name:"welcome", err:msg});
+  app.querySelector('[data-a="join"]').onclick=async e=>{
+    e.target.disabled = true;
+    try{ await joinWithCode(document.getElementById("code").value); }catch(err){ fail(errText(err)); }
+  };
+  app.querySelector('[data-a="create"]').onclick=async e=>{
+    const name = document.getElementById("nm").value.trim(), invite = document.getElementById("inv").value;
+    const p1 = document.getElementById("p1").value, p2 = document.getElementById("p2").value;
+    if(!name) return fail("צריך לכתוב שם.");
+    if(!/^\d{4,8}$/.test(p1)) return fail("קוד ההורה צריך להיות 4 עד 8 ספרות.");
+    if(p1 !== p2) return fail("שני קודי ההורה לא זהים.");
+    e.target.disabled = true;
+    try{
+      const j = await api({action:"create", invite, name});
+      if(!j.ok) throw new Error(j.error);
+      lsSet(LS_INVITE, invite);
+      await useUser(j.u, j.name);
+      S.pinHash = await pinHash(p1); save();
+      go({name:"created"});
+    }catch(err){ fail(errText(err)); }
+  };
+}
+
+function created(){
+  app.innerHTML = `
+  <div class="result">
+    <h2>המשתמש של ${esc(USERNAME)} מוכן! 🎉</h2>
+    <p>זה קוד המשתמש. שמרו אותו: איתו נכנסים מכל טלפון.</p>
+    <div class="n code en">${fmtCode(USER)}</div>
+    <button class="btn no wide" data-a="share">העתקת קישור לטלפון של ההורה</button>
+    <button class="btn go wide" data-a="go">מתחילים</button>
+    <p class="note">הקוד מופיע תמיד גם במסך ההורה.</p>
+  </div>`;
+  app.querySelector('[data-a="share"]').onclick=async()=>{
+    try{ await navigator.clipboard.writeText(shareLink()); flash("הקישור הועתק"); }catch(e){ prompt("העתיקו את הקישור:", shareLink()); }
+  };
+  app.querySelector('[data-a="go"]').onclick=()=>go({name:"home"});
+}
+
+function usersScreen(){
+  const list = deviceUsers();
+  app.innerHTML = `
+  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">מי מתרגל?</span></div>
+  <div class="weeks">${list.map(x=>`<button class="week ${x.u===USER?'done':''}" data-pick="${x.u}"><span class="num">${esc(x.name.charAt(0))}</span><span class="t"><b>${esc(x.name)}</b>${x.u===USER?'<span>מחובר עכשיו</span>':''}</span></button>`).join("")}</div>
+  <button class="btn no wide" data-a="add">הוספת משתמש</button>`;
+  app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
+  app.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=> b.dataset.pick===USER ? go({name:"home"}) : useUser(b.dataset.pick));
+  app.querySelector('[data-a="add"]').onclick=()=>go({name:"welcome"});
+}
+
+function pinScreen(){
+  app.innerHTML = `
+  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">מסך הורה · ${esc(USERNAME)}</span></div>
+  <div class="form">
+    <label>קוד הורה<input class="field en" id="pin" type="password" inputmode="numeric" autocomplete="current-password"></label>
+    <button class="btn go wide" data-a="ok">כניסה</button>
+    <div class="feedback bad" id="fb">${view.err ? esc(view.err) : ""}</div>
+  </div>
+  <details class="note"><summary>שכחתי את קוד ההורה</summary>
+    <p>הקלידו את קוד ההזמנה שקיבלתם כשנרשמתם, ותוכלו לקבוע קוד הורה חדש.</p>
+    <input class="field en" id="inv" autocomplete="off" autocapitalize="characters">
+    <button class="btn no wide" data-a="reset">קביעת קוד חדש</button>
+  </details>`;
+  app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
+  const pin = document.getElementById("pin"); pin.focus();
+  const check = async()=>{
+    if(await pinHash(pin.value) === S.pinHash){ await unlockFamily(pin.value); go({name:"parent"}); }
+    else go({name:"pin", err:"הקוד לא נכון."});
+  };
+  app.querySelector('[data-a="ok"]').onclick=check;
+  pin.onkeydown=e=>{ if(e.key==="Enter") check(); };
+  app.querySelector('[data-a="reset"]').onclick=async()=>{
+    try{
+      const j = await api({action:"checkInvite", invite:document.getElementById("inv").value});
+      if(!j.ok) throw new Error(j.error);
+      go({name:"pinset"});
+    }catch(e){ go({name:"pin", err:errText(e)}); }
+  };
+}
+
+function pinSetScreen(){
+  app.innerHTML = `
+  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">קביעת קוד הורה · ${esc(USERNAME)}</span></div>
+  <p class="note">קוד ההורה שומר על מסך ההורה, כדי שרק אתם תוכלו לפתוח וסגור שלבים, לאפס התקדמות ולראות את קוד המשתמש.</p>
+  <div class="form">
+    <label>קוד הורה חדש: 4 עד 8 ספרות<input class="field en" id="p1" type="password" inputmode="numeric" autocomplete="new-password"></label>
+    <label>שוב את הקוד<input class="field en" id="p2" type="password" inputmode="numeric" autocomplete="new-password"></label>
+    <button class="btn go wide" data-a="ok">שמירה</button>
+    <div class="feedback bad">${view.err ? esc(view.err) : ""}</div>
+  </div>`;
+  app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
+  app.querySelector('[data-a="ok"]').onclick=async()=>{
+    const p1 = document.getElementById("p1").value, p2 = document.getElementById("p2").value;
+    if(!/^\d{4,8}$/.test(p1)) return go({name:"pinset", err:"הקוד צריך להיות 4 עד 8 ספרות."});
+    if(p1 !== p2) return go({name:"pinset", err:"שני הקודים לא זהים."});
+    S.pinHash = await pinHash(p1); save();
+    await unlockFamily(p1); go({name:"parent"}); flash("קוד ההורה נשמר");
+  };
+}
+
+function openParent(){ go({name: parentOk.has(USER) ? "parent" : S.pinHash ? "pin" : "pinset"}); }
+
+function familySection(){
+  const atLeast3 = m => Object.values(m || {}).filter(v => v >= MASTER).length;
+  const rows = deviceUsers().map(x=>{
+    const d = x.u === USER ? S : localData(x.u), last = (d.days || []).slice(-1)[0];
+    const btn = x.u === USER ? `<span class="tag">מוצג עכשיו</span>` : `<button class="mk" data-manage="${x.u}">ניהול${parentOk.has(x.u) ? "" : " 🔒"}</button>`;
+    return `<div class="wl fam"><span><b>${esc(x.name)}</b><small>${atLeast3(d.score)} מילים · ${atLeast3(d.gscore)} משפטים · ${last ? "תרגול אחרון " + last.split("-").reverse().slice(0,2).join("/") : "עוד לא תרגל"}</small></span>${btn}</div>`;
+  }).join("");
+  return `<h2>המשפחה</h2><div class="wordlist">${rows}</div>
+  <div class="links"><button class="ghost" data-a="addkid">הוספת ילד</button></div>
+  <p class="note">כל ילד מנוהל בנפרד. ילדים עם אותו קוד הורה נפתחים יחד, בלי להקליד שוב.</p>`;
+}
+
 function parent(){
+  if(!parentOk.has(USER)) return openParent();
+  refreshFamily();
   const hard = Object.entries(S.wrong).sort((a,b)=>b[1]-a[1]).slice(0,15)
     .map(([en,n])=>{ const x=EVERY.find(w=>w.en===en); return x?{...x,n}:null; }).filter(Boolean);
   const last = S.days.slice(-14).reverse();
   app.innerHTML = `
-  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">מסך הורה</span></div>
+  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">מסך הורה · ${esc(USERNAME)}</span></div>
+  ${familySection()}
+  <h2>${esc(USERNAME)}</h2>
+  <div class="wordlist">
+    <div class="wl"><span>שם</span><b>${esc(USERNAME)}</b><button class="mk" data-a="rename">שינוי</button></div>
+    <div class="wl"><span>קוד משתמש</span><b class="en" style="white-space:nowrap">${fmtCode(USER)}</b><button class="mk" data-a="share">העתקת קישור</button></div>
+  </div>
+  <p class="note">כדי לראות את ההתקדמות מהטלפון שלכם, פתחו בו את הקישור, או הקלידו את הקוד במסך הכניסה. שמרו את הקוד: בלעדיו אי אפשר לחזור למשתמש.</p>
+  <div class="links"><button class="ghost" data-a="newpin">שינוי קוד הורה</button><button class="ghost" data-a="forget">הסרת המשתמש מהטלפון הזה</button></div>
   <h2>שלב ${S.level}</h2>
   <div class="wordlist">
     ${WEEKS.map(w=>{const l=ALL.filter(x=>x.week===w.n);return `<div class="wl"><span>שבוע ${w.n}: ${w.name}</span><b>${known(l)} / ${l.length}</b></div>`;}).join("")}
@@ -920,10 +1200,30 @@ function parent(){
     while(!isOpen(S.level)) S.level--;
     useLevel(S.level); save(); render();
   });
-  app.querySelector('[data-a="reset"]').onclick=()=>{ if(confirm("למחוק את כל ההתקדמות ולהתחיל מחדש?")){ S=fresh(); useLevel(1); save(); go({name:"home"}); } };
+  app.querySelector('[data-a="reset"]').onclick=()=>{ if(confirm("למחוק את כל ההתקדמות ולהתחיל מחדש?")){ S=Object.assign(fresh(), {pinHash:S.pinHash}); useLevel(1); save(); go({name:"home"}); } };
+  app.querySelector('[data-a="rename"]').onclick=async()=>{
+    const name = (prompt("שם חדש:", USERNAME) || "").trim().slice(0,30);
+    if(!name || name===USERNAME) return;
+    try{ const j = await api({action:"rename", u:USER, name}); if(!j.ok) throw new Error(j.error); USERNAME = name; rememberUser(USER, name); render(); }
+    catch(e){ alert(errText(e)); }
+  };
+  app.querySelector('[data-a="share"]').onclick=async()=>{
+    const link = shareLink();
+    try{ await navigator.clipboard.writeText(link); flash("הקישור הועתק"); }catch(e){ prompt("העתיקו את הקישור:", link); }
+  };
+  app.querySelector('[data-a="newpin"]').onclick=()=>go({name:"pinset"});
+  app.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>{ const u=b.dataset.manage; useUser(u, null, parentOk.has(u) ? "parent" : "pin"); });
+  app.querySelector('[data-a="addkid"]').onclick=()=>go({name:"welcome"});
+  app.querySelector('[data-a="forget"]').onclick=async()=>{
+    if(!confirm(`להסיר את ${USERNAME} מהטלפון הזה? ההתקדמות נשמרת בענן, ואפשר לחזור עם קוד המשתמש ${fmtCode(USER)}.`)) return;
+    if(pending) await push();
+    forgetUser(USER); USER = null;
+    const next = deviceUsers()[0];
+    next ? useUser(next.u, next.name) : go({name:"welcome"});
+  };
 }
 
-loadLocal(); render(); pull();
+boot();
 if("serviceWorker" in navigator) window.addEventListener("load", ()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
 </script>
 </body>
