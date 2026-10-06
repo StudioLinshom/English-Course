@@ -62,6 +62,53 @@ h2{font-size:18px;margin:26px 0 10px}
 .mode.review{margin-top:12px}
 .mode.review.due{border-color:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb, var(--sun) 35%, transparent)}
 .mode.gram{margin-top:12px}
+/* fun */
+.board{background:linear-gradient(135deg,var(--field) 0%,var(--field-2) 100%)}
+.board::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background:radial-gradient(circle at 12% 22%,#fff 1.5px,transparent 2.5px),radial-gradient(circle at 78% 14%,#fff 1px,transparent 2px),
+             radial-gradient(circle at 88% 70%,#fff 1.5px,transparent 2.5px),radial-gradient(circle at 30% 85%,#fff 1px,transparent 2px)}
+.buddy{display:flex;align-items:center;gap:10px;margin-top:12px}
+.buddy .mascot{flex:none;animation:float 3s ease-in-out infinite}
+.bubble{position:relative;background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:8px 12px;font-weight:600;font-size:15px}
+.bubble::before{content:"";position:absolute;inset-inline-start:-9px;top:50%;margin-top:-7px;border:7px solid transparent;border-inline-end-color:var(--line)}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.num.ic{position:relative;font-size:24px}
+.num.ic small{position:absolute;bottom:-4px;inset-inline-start:-4px;background:var(--field);color:#fff;border-radius:99px;font-size:11px;min-width:18px;height:18px;line-height:18px;text-align:center;font-family:"Rubik",sans-serif}
+.weeks .week:nth-child(6n+1) .num{background:rgba(242,87,74,.16)}
+.weeks .week:nth-child(6n+2) .num{background:rgba(255,200,61,.28)}
+.weeks .week:nth-child(6n+3) .num{background:rgba(77,163,255,.18)}
+.weeks .week:nth-child(6n+4) .num{background:rgba(46,154,99,.18)}
+.weeks .week:nth-child(6n+5) .num{background:rgba(181,123,255,.18)}
+.weeks .week:nth-child(6n+6) .num{background:rgba(255,143,177,.22)}
+.weeks .week.done .num{background:var(--sun)}
+.week,.mode,.lv,.opt,.btn,.tile{transition:transform .12s}
+.week:active,.mode:active,.lv:active,.opt:active,.btn:active,.tile:active{transform:scale(.97)}
+#cheer{position:fixed;top:12px;left:50%;transform:translate(-50%,-140%);display:flex;align-items:center;gap:8px;z-index:50;pointer-events:none;
+  background:var(--paper);border:2px solid var(--sun);border-radius:99px;padding:4px 16px 4px 6px;box-shadow:0 8px 24px rgba(0,0,0,.18);font-weight:700;font-size:17px;transition:transform .3s cubic-bezier(.2,1.4,.4,1)}
+#cheer.show{transform:translate(-50%,0)}
+#cheer.sad{border-color:var(--line)}
+#cheer.show .mascot{animation:jump .5s}
+#cheer.show.sad .mascot{animation:tilt .7s}
+@keyframes jump{0%{transform:translateY(10px) scale(.7)}45%{transform:translateY(-8px) scale(1.1)}100%{transform:none}}
+@keyframes tilt{0%,100%{transform:rotate(0)}30%{transform:rotate(-12deg)}65%{transform:rotate(8deg)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(3px)}}
+.opt.wrong,.shake{animation:shake .45s}
+.opt.right,.good{animation:pop .45s}
+input.type.good,.built.good{border-color:var(--field-2);background:var(--good-bg)}
+.confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:60}
+.res-buddy .mascot{animation:jump .6s}
+.stars{display:flex;justify-content:center;gap:6px;margin:4px 0}
+.stars span{font-size:46px;line-height:1;color:var(--line);display:inline-block;transform:scale(0);animation:starIn .45s forwards}
+.stars span.on{color:var(--sun);text-shadow:0 2px 0 rgba(0,0,0,.08)}
+@keyframes starIn{0%{transform:scale(0) rotate(-120deg)}70%{transform:scale(1.3) rotate(10deg)}100%{transform:scale(1) rotate(0)}}
+.n.grow{animation:pop .7s;display:inline-block}
+.mode.next{animation:wiggle 2.5s ease-in-out infinite}
+@keyframes wiggle{0%,90%,100%{transform:rotate(0)}93%{transform:rotate(-1.5deg)}96%{transform:rotate(1.5deg)}}
+@media (prefers-reduced-motion:reduce){
+  .buddy .mascot,#cheer .mascot,.res-buddy .mascot,.opt.wrong,.opt.right,.shake,.good,.n.grow,.mode.next{animation:none!important}
+  .stars span{animation:none;transform:none}
+  #cheer{transition:none}
+}
 .who{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;font-weight:600}
 .ghost.sm{padding:4px 10px;font-size:14px}
 .board .sub{margin:6px 0 0;opacity:.95}
@@ -465,6 +512,121 @@ const shuffle = a => { a=[...a]; for(let i=a.length-1;i>0;i--){const j=Math.floo
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const app = document.getElementById("app");
 
+/* ---------- fun: mascot, icons, sounds, celebrations ---------- */
+const WEEK_ICONS = {"בית ומשפחה":"🏠","פעלים":"🏃","תארים ורגשות":"😊","בית ספר וזמן":"🏫","אוכל וקניות":"🛒","מקומות וכיוונים":"🧭","מילות קישור ושאלה":"❓",
+  "גוף ובריאות":"🩺","טבע ומזג אוויר":"🌦️","זמן ותדירות":"⏰","בגדים ותחביבים":"👕","תארים":"🎨","אנשים ועבודה":"👷",
+  "בעלי חיים":"🦁","חפצים בבית":"🛋️","תחבורה ונסיעות":"✈️","תכונות אופי":"🦸","תקשורת ושפה":"💬","מילים שימושיות":"🧩",
+  "לימודים":"📚","בעיר":"🏙️","ארוחות":"🍽️","גדלים וכמויות":"📏","אירועים וזמן":"🎉",
+  "טבע וסביבה":"🌳","מחשבות ורגשות":"💭","איפה זה?":"📍","מדינה ועולם":"🌍","ספורט ותנועה":"⚽","מילות קישור":"🔗"};
+const weekIcon = name => WEEK_ICONS[name] || "⭐";
+const UNIT_ICONS = {ps:"📅", pc:"⏳", pa:"📜", im:"📣", fu:"🚀", lk:"🔗"};
+const LEVEL_ICONS = ["🌱","🌿","🌳","🏔️","🚀"];
+const PRAISE = ["כל הכבוד!","מעולה!","יש!","אלוף!","מדהים!","בול!","וואו!","תותח!"];
+const ENCOURAGE = ["כמעט! בפעם הבאה זה שלך","לא נורא, ככה לומדים","טעות עוזרת לזכור","ממשיכים, אתה בדרך!"];
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const calm = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+// ניצן, the app's sprout buddy.
+function mascot(mood = "", size = 64){
+  const mouth = mood === "sad" ? "M41 72 Q50 66 59 72" : "M39 67 Q50 79 61 67";
+  return `<svg class="mascot ${mood}" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true">
+    <path d="M50 26 C45 12 34 7 25 11 C33 16 41 20 50 27 Z" fill="#2E9A63"/>
+    <path d="M50 26 C56 10 68 6 77 12 C68 15 59 19 50 27 Z" fill="#56CF8E"/>
+    <circle cx="50" cy="60" r="33" fill="#FFC83D"/>
+    <ellipse cx="38" cy="56" rx="5.5" ry="6.5" fill="#1C2B4B"/><ellipse cx="62" cy="56" rx="5.5" ry="6.5" fill="#1C2B4B"/>
+    <circle cx="40" cy="53.5" r="2" fill="#fff"/><circle cx="64" cy="53.5" r="2" fill="#fff"/>
+    <circle cx="29" cy="67" r="5" fill="#F2574A" opacity=".3"/><circle cx="71" cy="67" r="5" fill="#F2574A" opacity=".3"/>
+    <path d="${mouth}" stroke="#1C2B4B" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </svg>`;
+}
+
+const LS_SOUND = "vocab-sound";
+const soundOn = () => lsGet(LS_SOUND) !== "off";
+let audioCtx = null;
+function tones(freqs, dur = .1, type = "sine", vol = .07){
+  if(!soundOn()) return;
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    let t = audioCtx.currentTime;
+    for(const f of freqs){
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = type; o.frequency.value = f;
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + dur);
+      t += dur * .8;
+    }
+  }catch(e){}
+}
+const SFX = {
+  ok:   () => tones([880, 1175], .09),
+  bad:  () => tones([330, 262], .13, "triangle", .05),
+  star: () => tones([784, 988, 1175, 1568], .08),
+  win:  () => tones([523, 659, 784, 1047, 1319], .11),
+};
+
+function confetti(n = 90){
+  if(calm()) return;
+  const c = document.createElement("canvas"), dpr = window.devicePixelRatio || 1, W = innerWidth, H = innerHeight;
+  c.className = "confetti"; c.width = W*dpr; c.height = H*dpr;
+  document.body.appendChild(c);
+  const g = c.getContext("2d"); g.scale(dpr, dpr);
+  const colors = ["#FFC83D","#F2574A","#2E9A63","#4DA3FF","#B57BFF","#FF8FB1"];
+  const ps = Array.from({length:n}, () => ({x:W/2 + (Math.random()-.5)*90, y:H*.42, vx:(Math.random()-.5)*13, vy:-Math.random()*13-4,
+    r:Math.random()*7+5, a:Math.random()*6, va:(Math.random()-.5)*.4, c:pick(colors)}));
+  const t0 = performance.now();
+  (function frame(t){
+    g.clearRect(0, 0, W, H);
+    for(const q of ps){ q.vy += .35; q.x += q.vx; q.y += q.vy; q.a += q.va;
+      g.save(); g.translate(q.x, q.y); g.rotate(q.a); g.fillStyle = q.c; g.fillRect(-q.r/2, -q.r/4, q.r, q.r/2); g.restore(); }
+    if(t - t0 < 1900) requestAnimationFrame(frame); else c.remove();
+  })(t0);
+}
+
+// A short pop-up from ניצן at the top of the screen.
+function cheer(text, mood = "happy"){
+  let el = document.getElementById("cheer");
+  if(!el){ el = document.createElement("div"); el.id = "cheer"; el.setAttribute("role", "status"); document.body.appendChild(el); }
+  el.innerHTML = mascot(mood, 44) + `<span>${esc(text)}</span>`;
+  el.className = "show " + mood;
+  clearTimeout(cheer.t); cheer.t = setTimeout(() => { el.className = ""; }, 1500);
+}
+
+// Reaction to one answer. learned = this answer completed a word/sentence (3 right).
+function react(ok, learned, v, what = "מילה"){
+  if(!ok){ v.streak = 0; SFX.bad(); cheer(pick(ENCOURAGE), "sad"); return; }
+  v.streak = (v.streak || 0) + 1;
+  if(learned){ SFX.star(); cheer(`⭐ ${what === "מילה" ? "מילה חדשה נתפסה!" : "משפט חדש נתפס!"}`); confetti(60); }
+  else if(v.streak >= 3 && v.streak % 3 === 0){ SFX.star(); cheer(`🔥 ${v.streak} ברצף!`); confetti(45); }
+  else { SFX.ok(); cheer(pick(PRAISE)); }
+}
+function wordAnswer(x, ok, v){
+  const was = sc(x.en);
+  bump(x.en, ok);
+  react(ok, was < MASTER && sc(x.en) >= MASTER, v);
+}
+
+const starsFor = (r, t) => { const q = t ? r/t : 0; return q >= .9 ? 3 : q >= .7 ? 2 : q >= .4 ? 1 : 0; };
+function resultTop(right, total){
+  const st = starsFor(right, total);
+  return `<div class="res-buddy">${mascot(st >= 1 ? "happy" : "", 92)}</div>
+    <div class="stars" aria-label="${st} כוכבים">${[0,1,2].map(i => `<span class="${i < st ? "on" : ""}" style="animation-delay:${.2 + i*.25}s">★</span>`).join("")}</div>
+    <div class="n">${right}/${total}</div>`;
+}
+function celebrateResult(right, total){
+  const st = starsFor(right, total);
+  if(st >= 2){ setTimeout(() => { SFX.win(); confetti(st === 3 ? 140 : 80); }, 300); }
+}
+
+function homeTip(k){
+  if(!S.days.length) return `היי ${USERNAME}! אני ניצן 🌱 בוא נתחיל ללמוד ביחד!`;
+  const st = streak();
+  if(st >= 2) return `🔥 ${st} ימים ברצף! שומרים על הרצף היום?`;
+  const left = UNLOCK - k;
+  if(left > 0 && left <= 10 && S.level < LEVELS.length && !isOpen(S.level+1)) return `עוד ${left} מילים ונפתח שלב ${S.level+1}! 💪`;
+  return pick(["כל יום קצת, וזה מצטבר!","בוא נלמד מילה חדשה 💪","אני גאה בך! ⭐","מוכן לאתגר? 🎯"]);
+}
+const lastShown = {}; // per user: the word count shown last time, to celebrate growth
+
 /* ---------- screens ---------- */
 let view = {name:"home"};
 function go(v){ view = v; render(); window.scrollTo(0,0); }
@@ -489,30 +651,33 @@ function render(){
 function home(){
   parentOk.clear(); // leaving the parent screen locks it again
   const k = known(ALL);
+  const key = USER + ":" + S.level, grew = lastShown[key] !== undefined && k > lastShown[key];
+  lastShown[key] = k;
   app.innerHTML = `
-  <div class="who"><span>שלום ${esc(USERNAME)} 👋</span><button class="ghost sm" data-a="users">החלפת משתמש</button></div>
+  <div class="who"><span>שלום ${esc(USERNAME)} 👋</span><span><button class="ghost sm" data-a="sound" aria-label="צלילים">${soundOn() ? "🔊" : "🔇"}</button> <button class="ghost sm" data-a="users">החלפת משתמש</button></span></div>
   <section class="board">
-    <h1>100 מילים באנגלית · שלב ${S.level}</h1>
-    <div class="big"><span class="n">${k}</span><span class="of">מתוך 100 מילים שאתה יודע</span></div>
+    <h1>${LEVEL_ICONS[S.level-1]} 100 מילים באנגלית · שלב ${S.level}</h1>
+    <div class="big"><span class="n ${grew ? "grow" : ""}">${k}</span><span class="of">מתוך 100 מילים שאתה יודע</span></div>
     <div class="bar"><i style="width:${k}%"></i></div>
-    <div class="stats"><span>רצף: ${streak()} ימים</span><span>השבוע: ${weekDays()} מתוך 5 ימים</span></div>
+    <div class="stats"><span>🔥 רצף: ${streak()} ימים</span><span>📅 השבוע: ${weekDays()} מתוך 5 ימים</span></div>
   </section>
+  <div class="buddy">${mascot("happy", 58)}<div class="bubble">${esc(homeTip(k))}</div></div>
   <div class="levels">${LEVELS.map(l=>{ const o=isOpen(l.n), done=known(LEVEL_WORDS[l.n-1])===LEVEL_WORDS[l.n-1].length;
-    return `<button class="lv ${l.n===S.level?'cur':''}" data-l="${l.n}" ${o?'':'disabled'}>${o?'':'🔒 '}שלב ${l.n}${done?' ✓':''}</button>`; }).join("")}</div>
+    return `<button class="lv ${l.n===S.level?'cur':''}" data-l="${l.n}" ${o?'':'disabled'}>${o?LEVEL_ICONS[l.n-1]+' ':'🔒 '}שלב ${l.n}${done?' ✓':''}</button>`; }).join("")}</div>
   ${nextLevelNote(k)}
-  ${!S.placedLv[S.level] ? `<button class="mode" style="margin-top:16px" data-a="place"><b>מבחן פתיחה</b><span>עוברים על כל 100 המילים ומסמנים מה כבר יודעים. לוקח כ-10 דקות.</span></button>`:""}
+  ${!S.placedLv[S.level] ? `<button class="mode" style="margin-top:16px" data-a="place"><b>🔍 מבחן פתיחה</b><span>עוברים על כל 100 המילים ומסמנים מה כבר יודעים. לוקח כ-10 דקות.</span></button>`:""}
   ${reviewCard()}
   ${grammarCard()}
   <h2>השבועות</h2>
   <div class="weeks">
     ${WEEKS.map(w=>{ const list=ALL.filter(x=>x.week===w.n), kk=known(list), p=Math.round(kk/list.length*100);
       return `<button class="week ${kk===list.length?'done':''}" data-w="${w.n}">
-        <span class="num">${w.n}</span>
+        <span class="num ic">${weekIcon(w.name)}<small>${w.n}</small></span>
         <span class="t"><b>${w.name}</b><span>${kk} מתוך ${list.length} מילים</span><span class="mini"><i style="width:${p}%"></i></span></span>
       </button>`;}).join("")}
-    <button class="week" data-w="8"><span class="num">8</span><span class="t"><b>חזרה על הכל</b><span>בוחן מעורב, עם עדיפות למילים שעוד לא נתפסו</span></span></button>
+    <button class="week" data-w="8"><span class="num ic">🔄<small>8</small></span><span class="t"><b>חזרה על הכל</b><span>בוחן מעורב, עם עדיפות למילים שעוד לא נתפסו</span></span></button>
   </div>
-  <div class="links"><button class="ghost" data-a="parent">מסך הורה</button><span class="sync" id="sync" data-s="${syncState}">${SYNC_TEXT[syncState]}</span></div>`;
+  <div class="links"><button class="ghost" data-a="parent">👪 מסך הורה</button><span class="sync" id="sync" data-s="${syncState}">${SYNC_TEXT[syncState]}</span></div>`;
   app.querySelectorAll("[data-w]").forEach(b=>b.onclick=()=>go({name:"week",w:+b.dataset.w}));
   app.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>setLevel(+b.dataset.l));
   const rv = app.querySelector('[data-a="review"]'); if(rv) rv.onclick=startReview;
@@ -521,6 +686,8 @@ function home(){
   const pl = app.querySelector('[data-a="place"]'); if(pl) pl.onclick=()=>start("place", ALL);
   app.querySelector('[data-a="parent"]').onclick=openParent;
   app.querySelector('[data-a="users"]').onclick=()=>go({name:"users"});
+  app.querySelector('[data-a="sound"]').onclick=()=>{ lsSet(LS_SOUND, soundOn() ? "off" : null); render(); if(soundOn()) SFX.ok(); };
+  if(grew){ confetti(40); SFX.star(); }
 }
 
 function nextLevelNote(k){
@@ -536,9 +703,9 @@ function weekScreen(){
   app.innerHTML = `
   <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">שלב ${S.level} · שבוע ${w}: ${name}</span></div>
   <div class="modes">
-    <button class="mode" data-m="flash"><b>כרטיסיות</b><span>רואים מילה, מנסים להיזכר, הופכים ובודקים</span></button>
-    <button class="mode" data-m="quiz"><b>בוחן אמריקאי</b><span>${ROUND} שאלות, 4 תשובות לבחירה</span></button>
-    <button class="mode" data-m="type"><b>כתיבה</b><span>רואים בעברית, כותבים באנגלית</span></button>
+    <button class="mode" data-m="flash"><b>🃏 כרטיסיות</b><span>רואים מילה, מנסים להיזכר, הופכים ובודקים</span></button>
+    <button class="mode" data-m="quiz"><b>🎯 בוחן אמריקאי</b><span>${ROUND} שאלות, 4 תשובות לבחירה</span></button>
+    <button class="mode" data-m="type"><b>⌨️ כתיבה</b><span>רואים בעברית, כותבים באנגלית</span></button>
   </div>
   ${w!==8?`<div class="wordlist">${list.map((x,k)=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="dots">${[0,1,2].map(i=>`<i class="${sc(x.en)>i?'on':''}"></i>`).join("")}</span><button class="mk ${sc(x.en)>=MASTER?'on':''}" data-k="${k}" aria-pressed="${sc(x.en)>=MASTER}">${sc(x.en)>=MASTER?'✓ יודע':'יודע'}</button></div>`).join("")}</div>
   <p class="note">3 נקודות ירוקות = המילה נתפסה. תשובה שגויה מאפסת את הנקודות. אפשר ללחוץ "יודע" כדי לסמן מילה כידועה.</p>`:""}`;
@@ -592,7 +759,7 @@ function reviewCard(){
   if(S.level < 2) return "";
   const ago = daysSince(S.lastReview), due = ago >= REVIEW_EVERY;
   const when = S.lastReview ? (ago===0 ? "חזרה אחרונה: היום" : `חזרה אחרונה: לפני ${ago} ימים`) : "עוד לא עשית חזרה";
-  return `<button class="mode review ${due?'due':''}" data-a="review"><b>${due?'הגיע הזמן לחזרה! ':''}חזרה על שלבים קודמים</b><span>${REVIEW_ROUND} שאלות ממילים של ${S.level===2?'שלב 1':'שלבים 1–'+(S.level-1)}. ${when}.</span></button>`;
+  return `<button class="mode review ${due?'due':''}" data-a="review"><b>🔁 ${due?'הגיע הזמן לחזרה! ':''}חזרה על שלבים קודמים</b><span>${REVIEW_ROUND} שאלות ממילים של ${S.level===2?'שלב 1':'שלבים 1–'+(S.level-1)}. ${when}.</span></button>`;
 }
 function play(){
   const v=view, x=v.items[v.i];
@@ -621,8 +788,8 @@ function play(){
         document.querySelector('[data-a="say2"]').onclick=()=>speak(x.en);
         const f = app.querySelector('[data-a="flip"]'); f.remove();
         app.insertAdjacentHTML("beforeend", `<div class="row"><button class="btn go" data-a="yes">ידעתי</button><button class="btn no" data-a="no">עוד לא</button></div>`);
-        app.querySelector('[data-a="yes"]').onclick=()=>{ bump(x.en,true); v.right++; next(); };
-        app.querySelector('[data-a="no"]').onclick=()=>{ bump(x.en,false); v.missed.push(x); next(); };
+        app.querySelector('[data-a="yes"]').onclick=()=>{ wordAnswer(x,true,v); v.right++; next(); };
+        app.querySelector('[data-a="no"]').onclick=()=>{ wordAnswer(x,false,v); v.missed.push(x); next(); };
       };
     }
   }
@@ -644,8 +811,8 @@ function play(){
       app.querySelectorAll(".opt").forEach((bb,k)=>{ bb.disabled=true; if(opts[k].en===x.en) bb.classList.add("right"); });
       if(!ok) b.classList.add("wrong");
       const fb=document.getElementById("fb");
-      fb.className="feedback "+(ok?"ok":"bad"); fb.innerHTML = ok ? "נכון!" : `התשובה: <span class="en">${esc(x.en)}</span> = ${esc(x.he)}`;
-      speak(x.en); bump(x.en,ok); if(ok) v.right++; else v.missed.push(x);
+      fb.className="feedback "+(ok?"ok":"bad"); fb.innerHTML = ok ? "✅ " + pick(PRAISE) : `💡 התשובה: <span class="en">${esc(x.en)}</span> = ${esc(x.he)}`;
+      speak(x.en); wordAnswer(x,ok,v); if(ok) v.right++; else v.missed.push(x);
       setTimeout(next, ok?900:2000);
     });
   }
@@ -662,8 +829,9 @@ function play(){
       const ok = inp.value.trim().toLowerCase().replace(/\s+/g," ")===x.en;
       inp.disabled=true;
       const fb=document.getElementById("fb");
-      fb.className="feedback "+(ok?"ok":"bad"); fb.innerHTML = ok ? "נכון!" : `הנכון: <span class="en">${esc(x.en)}</span>`;
-      speak(x.en); bump(x.en,ok); if(ok) v.right++; else v.missed.push(x);
+      fb.className="feedback "+(ok?"ok":"bad"); fb.innerHTML = ok ? "✅ " + pick(PRAISE) : `💡 הנכון: <span class="en">${esc(x.en)}</span>`;
+      inp.classList.add(ok ? "good" : "shake");
+      speak(x.en); wordAnswer(x,ok,v); if(ok) v.right++; else v.missed.push(x);
       const b=app.querySelector('[data-a="check"]'); b.textContent="הבא"; b.onclick=next;
       if(ok) setTimeout(()=>{ if(view===v && v.items[v.i]===x) next(); }, 1000);
     };
@@ -680,12 +848,13 @@ function result(){
     : v.right===v.total ? "מושלם! כל התשובות נכונות." : v.right/v.total>=.7 ? "יפה מאוד. עוד קצת חזרה וזה שלך." : "התחלה טובה. כדאי לעשות עוד סבב כרטיסיות.";
   app.innerHTML = `
   <div class="result">
-    <div class="n">${v.right}/${v.total}</div>
-    <p>${msg}</p>
+    ${v.mode==="place" ? `<div class="res-buddy">${mascot("happy", 92)}</div><div class="n">${v.right}/${v.total}</div>` : resultTop(v.right, v.total)}
+    <p>${v.right===v.total && v.mode!=="place" ? "🏆 " : ""}${msg}</p>
     ${v.missed.length?`<h2>${v.mode==="place"?"מילים ללמוד":"מילים לחזרה"}</h2><div class="chips">${v.missed.slice(0,40).map(x=>`<span class="chip"><span class="en">${esc(x.en)}</span> · ${esc(x.he)}</span>`).join("")}</div>${v.missed.length>40?`<p class="note">ועוד ${v.missed.length-40} מילים</p>`:""}`:""}
     <button class="btn go wide" data-a="again">${v.back?"חזרה לשבוע":"למסך הבית"}</button>
   </div>`;
   app.querySelector('[data-a="again"]').onclick=()=>go(v.back?{name:"week",w:v.back}:{name:"home"});
+  if(v.mode!=="place") celebrateResult(v.right, v.total);
 }
 
 /* ---------- sentences & tenses ---------- */
@@ -891,7 +1060,7 @@ const unitOf = it => GRAMMAR.find(u => u.items.includes(it));
 
 function grammarCard(){
   const n = topUnit(), u = GRAMMAR[n];
-  return `<button class="mode gram" data-a="grammar"><b>משפטים וזמנים ✍️</b><span>יחידה ${n+1}: ${u.name} · ${gstats(u)}</span></button>`;
+  return `<button class="mode gram" data-a="grammar"><b>✍️ משפטים וזמנים</b><span>יחידה ${n+1}: ${u.name} · ${gstats(u)}</span></button>`;
 }
 
 function grammarScreen(){
@@ -900,7 +1069,7 @@ function grammarScreen(){
   <p class="note">כל יחידה מלמדת זמן אחד. יחידה חדשה נפתחת כשיודעים ${UNLOCK} מילים בשלב המילים המתאים. משפט "נתפס" אחרי 3 תשובות נכונות.</p>
   <div class="weeks">${GRAMMAR.map((u,n)=>{ const o=gOpen(n), k=gknown(u), p=Math.round(gpoints(u)*100);
     return `<button class="week ${k===u.items.length?'done':''}" data-g="${n}" ${o?'':'disabled'}>
-      <span class="num">${o?n+1:'🔒'}</span>
+      <span class="num ic">${o ? (UNIT_ICONS[u.id]||"✍️") + `<small>${n+1}</small>` : '🔒'}</span>
       <span class="t"><b>${u.name} · <span class="en">${esc(u.short)}</span></b><span>${o ? gstats(u) : `נפתחת כשתדע ${UNLOCK} מילים בשלב ${Math.min(n, LEVEL_WORDS.length)} (עכשיו: ${known(LEVEL_WORDS[Math.min(n, LEVEL_WORDS.length)-1])})`}</span><span class="mini"><i style="width:${p}%"></i></span></span>
     </button>`; }).join("")}</div>`;
   app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
@@ -953,10 +1122,13 @@ function gplay(){
   app.querySelector('[data-a="quit"]').onclick=()=>go({name:"gunit", n:v.n});
 
   const finish = ok => {
+    const was = gsc(it);
     gbump(it, ok); if(ok) v.right++; else v.missed.push(it);
+    react(ok, was < MASTER && gsc(it) >= MASTER, v, "משפט");
+    const built = document.getElementById("built"); if(built) built.classList.add(ok ? "good" : "shake");
     const fb=document.getElementById("fb");
     fb.className="feedback "+(ok?"ok":"bad");
-    fb.innerHTML = (ok ? "נכון! " : "התשובה הנכונה: ") + `<div class="en sent-ans">${esc(gText(it))}</div><button class="btn go wide" data-a="next">הבא</button>`;
+    fb.innerHTML = (ok ? "✅ " + pick(PRAISE) + " " : "💡 התשובה הנכונה: ") + `<div class="en sent-ans">${esc(gText(it))}</div><button class="btn go wide" data-a="next">הבא</button>`;
     speak(gText(it));
     app.querySelectorAll(".opt,.tile,[data-a=check]").forEach(b=>b.disabled=true);
     app.querySelector('[data-a="next"]').onclick=next;
@@ -983,13 +1155,14 @@ function gresult(){
   const v=view;
   app.innerHTML = `
   <div class="result">
-    <div class="n">${v.right}/${v.total}</div>
-    <p>${v.right===v.total ? "מושלם! כל המשפטים נכונים." : v.right/v.total>=.7 ? "יפה מאוד! עוד קצת תרגול וזה שלך." : "התחלה טובה. כדאי לקרוא שוב את ההסבר ולתרגל עוד סבב."}</p>
+    ${resultTop(v.right, v.total)}
+    <p>${v.right===v.total ? "🏆 מושלם! כל המשפטים נכונים." : v.right/v.total>=.7 ? "יפה מאוד! עוד קצת תרגול וזה שלך." : "התחלה טובה. כדאי לקרוא שוב את ההסבר ולתרגל עוד סבב."}</p>
     ${v.missed.length?`<h2>משפטים לחזרה</h2><div class="wordlist">${v.missed.map(it=>`<div class="wl ex"><span class="en">${esc(gText(it))}</span><span>${esc(it.he)}</span></div>`).join("")}</div>`:""}
     <p class="note">${gstats(GRAMMAR[v.n])}</p>
     <button class="btn go wide" data-a="again">חזרה ליחידה</button>
   </div>`;
   app.querySelector('[data-a="again"]').onclick=()=>go({name:"gunit", n:v.n});
+  celebrateResult(v.right, v.total);
 }
 
 function welcome(){
