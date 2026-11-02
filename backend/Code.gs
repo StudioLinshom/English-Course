@@ -6,6 +6,8 @@
 //   POST {action:"save", u, data}             -> {ok}
 //   POST {action:"rename", u, name}           -> {ok}
 //   POST {action:"checkInvite", invite}       -> {ok}
+//   POST {action:"ocr", u, image, mime}       -> {ok, words:[[en, he, autoTranslated]], text}  (photo of a word list)
+//   POST {action:"translate", u, words}       -> {ok, words:[[en, he, true]]}
 //   POST {action:"claim", key}                -> {ok, u, name}  (legacy single-user data -> Yoav's user)
 //
 // A user code is the only credential for that child's data, so codes are long and random.
@@ -146,6 +148,26 @@ function doGet(e) {
 function doPost(e) {
   let body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return json_({ error: 'bad json' }); }
+  // Reading a photo takes a few seconds, so it runs outside the lock that guards saves.
+  if (body.action === 'ocr' || body.action === 'translate') {
+    if (!findRow_(normCode_(body.u))) return json_({ error: 'unknown user' });
+    try {
+      if (body.action === 'ocr') {
+        if (!body.image || body.image.length > 8000000) return json_({ error: 'bad image' });
+        const text = ocr_(body.image, body.mime);
+        const words = parseWords_(text);
+        fillHebrew_(words);
+        return json_({ ok: true, words: words, text: text });
+      }
+      const words = (body.words || []).slice(0, 80)
+        .map(w => String(w || '').trim().replace(/\s+/g, ' ')).filter(Boolean)
+        .map(w => [w === 'I' ? w : w.toLowerCase(), '']);
+      fillHebrew_(words);
+      return json_({ ok: true, words: words });
+    } catch (err) {
+      return json_({ error: 'ocr failed', detail: String(err && err.message || err) });
+    }
+  }
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -214,4 +236,67 @@ function legacyRead_() {
   if (row) return readUser_(row).data;
   const raw = sheet_('data').getRange('A1').getValue();
   return raw ? JSON.parse(raw) : {};
+}
+
+// ---------- photographed word lists ----------
+
+// Google Drive turns an image into a Google Doc with the recognized text; the doc is deleted right after.
+function ocr_(b64, mime) {
+  const blob = Utilities.newBlob(Utilities.base64Decode(b64), mime || 'image/jpeg', 'dictation.jpg');
+  const file = Drive.Files.create({ name: 'dictation-ocr', mimeType: 'application/vnd.google-apps.document' }, blob, { ocrLanguage: 'en' });
+  try {
+    return DocumentApp.openById(file.id).getBody().getText();
+  } finally {
+    try { Drive.Files.remove(file.id); } catch (err) {}
+  }
+}
+
+// Turns OCR text into [english, hebrew] pairs. Handles numbered lists, "word - תרגום" lines,
+// and comma separated words; skips sentences and OCR noise.
+function parseWords_(text) {
+  const out = [], seen = {};
+  const add = (en, he) => {
+    en = en.replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').replace(/^[-' ]+|[-' ]+$/g, '').trim();
+    if (en.length < 2 && en !== 'a' && en !== 'I') return;
+    if (en !== 'I') en = en.toLowerCase();
+    if (seen[en]) return;
+    seen[en] = 1;
+    out.push([en, he || '']);
+  };
+  String(text || '').split(/\r?\n/).forEach(line => {
+    line = line.replace(/^\s*[\(\[]?\d{1,3}\s*[\.\)\]:\-]?\s*/, '').trim();
+    if (!line) return;
+    const heMatch = line.match(/[\u0590-\u05FF][\u0590-\u05FF\s'"׳״\/,\-()]*/);
+    const he = heMatch ? heMatch[0].replace(/[\s,\-\/(]+$/, '').trim() : '';
+    const enText = line.replace(/[\u0590-\u05FF]+/g, ' ');
+    const chunks = he ? [enText] : enText.split(/[,;\/|•·]+/);
+    chunks.forEach(chunk => {
+      const m = chunk.match(/[A-Za-z][A-Za-z'’\- ]*[A-Za-z]|[A-Za-z]/);
+      if (!m) return;
+      const parts = m[0].trim().split(/\s+/);
+      if (parts.length > 4) return;                      // a sentence, not a word
+      if (!he && parts.length > 2) parts.forEach(p => add(p, ''));
+      else add(m[0], he);
+    });
+  });
+  return out.slice(0, 60);
+}
+
+// Fills missing Hebrew with Google Translate; the third item marks an automatic translation.
+function fillHebrew_(words) {
+  const missing = words.filter(w => !w[1]);
+  if (!missing.length) return;
+  let tr = [];
+  try { tr = LanguageApp.translate(missing.map(w => w[0]).join('\n'), 'en', 'iw').split('\n'); } catch (err) {}
+  if (tr.length !== missing.length) {
+    tr = missing.slice(0, 40).map(w => { try { return LanguageApp.translate(w[0], 'en', 'iw'); } catch (err) { return ''; } });
+  }
+  missing.forEach((w, i) => { w[1] = String(tr[i] || '').trim(); w[2] = true; });
+}
+
+// Run once from the Apps Script editor so Google asks the owner to approve Drive, Docs and Translate.
+function authorizePhotoWords() {
+  const doc = DocumentApp.create('authorize-photo-words');
+  Drive.Files.remove(doc.getId());
+  return LanguageApp.translate('hello', 'en', 'iw');
 }
