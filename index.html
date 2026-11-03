@@ -62,6 +62,8 @@ h2{font-size:18px;margin:26px 0 10px}
 .mode.review{margin-top:12px}
 .mode.review.due{border-color:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb, var(--sun) 35%, transparent)}
 .mode.gram{margin-top:12px}
+.week.sent{border-style:dashed}
+.week.sent:disabled{opacity:.6}
 .mode.dict{margin-top:12px}
 .filebtn{display:block;text-align:center;cursor:pointer}
 .filebtn.busy,[data-a=manual].busy{opacity:.5;pointer-events:none}
@@ -692,7 +694,7 @@ function home(){
   const key = USER + ":" + S.level, grew = lastShown[key] !== undefined && k > lastShown[key];
   lastShown[key] = k;
   app.innerHTML = `
-  <div class="who"><span>שלום ${esc(USERNAME)} 👋</span><span><button class="ghost sm" data-a="sound" aria-label="צלילים">${soundOn() ? "🔊" : "🔇"}</button> <button class="ghost sm" data-a="users">החלפת משתמש</button></span></div>
+  <div class="who"><span>שלום ${esc(USERNAME)} 👋</span><span><button class="ghost sm" data-a="dicts">📷 הכתבות</button> <button class="ghost sm" data-a="sound" aria-label="צלילים">${soundOn() ? "🔊" : "🔇"}</button> <button class="ghost sm" data-a="users">החלפת משתמש</button></span></div>
   <section class="board">
     <h1>${LEVEL_ICONS[S.level-1]} 100 מילים באנגלית · שלב ${S.level}</h1>
     <div class="big"><span class="n ${grew ? "grow" : ""}">${k}</span><span class="of">מתוך 100 מילים שאתה יודע</span></div>
@@ -705,8 +707,6 @@ function home(){
   ${nextLevelNote(k)}
   ${!S.placedLv[S.level] ? `<button class="mode" style="margin-top:16px" data-a="place"><b>🔍 מבחן פתיחה</b><span>עוברים על כל 100 המילים ומסמנים מה כבר יודעים. לוקח כ-10 דקות.</span></button>`:""}
   ${reviewCard()}
-  ${grammarCard()}
-  ${dictCard()}
   <h2>השבועות</h2>
   <div class="weeks">
     ${WEEKS.map(w=>{ const list=ALL.filter(x=>x.week===w.n), kk=known(list), p=Math.round(kk/list.length*100);
@@ -715,12 +715,17 @@ function home(){
         <span class="t"><b>${w.name}</b><span>${kk} מתוך ${list.length} מילים</span><span class="mini"><i style="width:${p}%"></i></span></span>
       </button>`;}).join("")}
     <button class="week" data-w="8"><span class="num ic">🔄<small>8</small></span><span class="t"><b>חזרה על הכל</b><span>בוחן מעורב, עם עדיפות למילים שעוד לא נתפסו</span></span></button>
+    ${levelUnits(S.level).map(n=>{ const u=GRAMMAR[n], o=gOpen(n), p=Math.round(gpoints(u)*100);
+      return `<button class="week sent ${gknown(u)===u.items.length?'done':''}" data-g="${n}" ${o?'':'disabled'}>
+        <span class="num ic">${o ? UNIT_ICONS[u.id] : '🔒'}</span>
+        <span class="t"><b>✍️ משפטים: ${u.name}</b><span>${o ? gstats(u) : `ייפתח כשתדע ${UNLOCK} מילים בשלב ${S.level}`}</span>${o ? `<span class="mini"><i style="width:${p}%"></i></span>` : ""}</span>
+      </button>`; }).join("")}
   </div>
   <div class="links"><button class="ghost" data-a="parent">👪 מסך הורה</button><span class="sync" id="sync" data-s="${syncState}">${SYNC_TEXT[syncState]}</span></div>`;
   app.querySelectorAll("[data-w]").forEach(b=>b.onclick=()=>go({name:"week",w:+b.dataset.w}));
   app.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>setLevel(+b.dataset.l));
   const rv = app.querySelector('[data-a="review"]'); if(rv) rv.onclick=startReview;
-  app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"grammar"});
+  app.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>go({name:"gunit", n:+b.dataset.g}));
   app.querySelector('[data-a="dicts"]').onclick=()=>go({name:"dicts"});
   const nx = app.querySelector('[data-a="next"]'); if(nx) nx.onclick=()=>setLevel(S.level+1);
   const pl = app.querySelector('[data-a="place"]'); if(pl) pl.onclick=()=>start("place", ALL);
@@ -1116,6 +1121,9 @@ const gText = it => it.t==="order" ? it.w + it.p : it.t==="fill" ? it.s.replace(
 const tileText = (t, i) => i===0 && t!=="I" && !t.startsWith("I'") ? t.charAt(0).toLowerCase() + t.slice(1) : t;
 const unitOf = it => GRAMMAR.find(u => u.items.includes(it));
 
+const UNIT_LEVEL = {ps:1, pc:1, pa:2, im:3, fu:4, lk:5};
+const levelUnits = lv => GRAMMAR.map((u,n)=>n).filter(n => UNIT_LEVEL[GRAMMAR[n].id] === lv);
+
 function grammarCard(){
   const n = topUnit(), u = GRAMMAR[n];
   return `<button class="mode gram" data-a="grammar"><b>✍️ משפטים וזמנים</b><span>יחידה ${n+1}: ${u.name} · ${gstats(u)}</span></button>`;
@@ -1137,7 +1145,7 @@ function grammarScreen(){
 function gunitScreen(){
   const n=view.n, u=GRAMMAR[n];
   app.innerHTML = `
-  <div class="top"><button class="back" data-a="grammar">חזרה</button><span class="title">יחידה ${n+1}: ${u.name}</span></div>
+  <div class="top"><button class="back" data-a="grammar">חזרה</button><span class="title">✍️ משפטים: ${u.name}</span></div>
   <div class="rule">
     <p>${esc(u.rule)}</p>
     <ul>${u.form.map(([label, ex])=>`<li>${esc(label)}: <span class="en">${esc(ex)}</span></li>`).join("")}</ul>
@@ -1148,7 +1156,7 @@ function gunitScreen(){
   <button class="btn go wide" data-a="gpractice">תרגול</button>
   <div class="bar gbar"><i style="width:${Math.round(gpoints(u)*100)}%"></i></div>
   <p class="note">${gstats(u)} מתוך ${u.items.length}. כל תשובה נכונה מקדמת את הפס; משפט נתפס אחרי 3 תשובות נכונות, ותשובה שגויה מאפסת אותו.</p>`;
-  app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"grammar"});
+  app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"home"});
   app.querySelectorAll("[data-say]").forEach(b=>b.onclick=()=>speak(u.ex[+b.dataset.say][0]));
   app.querySelector('[data-a="gpractice"]').onclick=()=>go({name:"gplay", n, items:gRound(n), i:0, right:0, missed:[]});
 }
