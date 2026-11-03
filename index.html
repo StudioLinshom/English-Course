@@ -71,6 +71,10 @@ h2{font-size:18px;margin:26px 0 10px}
 .er{display:grid;grid-template-columns:1fr 1fr 20px 34px;gap:6px;align-items:center}
 .er .field{padding:10px;font-size:16px}
 .er .auto{font-size:14px;text-align:center}
+.savebar{position:sticky;bottom:0;z-index:5;background:var(--chalk);padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px));margin-top:6px;box-shadow:0 -10px 12px -10px rgba(0,0,0,.18)}
+.savebar .btn{margin-top:4px}
+.savebar .feedback{margin-top:0;min-height:0}
+details.raw pre{white-space:pre-wrap;direction:ltr;text-align:left;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:8px;font-size:13px;max-height:180px;overflow:auto}
 .mascot.emoji{display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .buddy{cursor:pointer}
 .bubble small{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}
@@ -1215,7 +1219,7 @@ function gresult(){
 }
 
 /* ---------- dictations: photographed or typed word lists ---------- */
-const DICT_MAX = 60;
+const DICT_MAX = 50;
 const dictById = id => (S.dict || []).find(d => d.id === id);
 const dictWords = d => d.words.map(([en, he]) => ({en, he, week:"d:" + d.id}));
 const defaultDictName = () => { const t = new Date(); return `הכתבה ${t.getDate()}/${t.getMonth()+1}`; };
@@ -1224,7 +1228,7 @@ function dictCard(){
   return `<button class="mode dict" data-a="dicts"><b>📷 הכתבות</b><span>${n ? `${n} הכתבות שמורות · אפשר להוסיף חדשה` : "מצלמים רשימת מילים מבית הספר ומתרגלים אותה"}</span></button>`;
 }
 // Photos are shrunk on the phone before upload: enough detail for OCR, a fraction of the size.
-function shrinkImage(file, max = 1600){
+function shrinkImage(file, max = 2200){
   return new Promise((resolve, reject) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
@@ -1233,7 +1237,7 @@ function shrinkImage(file, max = 1600){
       c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
-      resolve(c.toDataURL("image/jpeg", .85).split(",")[1]);
+      resolve(c.toDataURL("image/jpeg", .9).split(",")[1]);
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad image")); };
     img.src = url;
@@ -1274,7 +1278,7 @@ function dictsScreen(){
       if(!j.ok) throw new Error(j.error);
       if(!j.words.length) return go({name:"dicts", err:"לא מצאתי מילים באנגלית בתמונה. נסו לצלם מקרוב ובאור טוב, או הקלידו את המילים."});
       SFX.ok();
-      go({name:"dictedit", title:defaultDictName(), rows:j.words.slice(0, DICT_MAX)});
+      go({name:"dictedit", title:defaultDictName(), rows:j.words.slice(0, DICT_MAX), raw:j.text || ""});
     }catch(err){
       go({name:"dicts", err: err.message==="ocr failed" || err.message==="bad image" ? "לא הצלחתי לקרוא את התמונה. נסו שוב, או הקלידו את המילים." : errText(err)});
     }
@@ -1287,19 +1291,23 @@ function dictEditScreen(){
   app.innerHTML = `
   <div class="top"><button class="back" data-a="back">ביטול</button><span class="title">${v.id ? "עריכת הכתבה" : "הכתבה חדשה"}</span></div>
   <div class="form"><label>שם ההכתבה<input class="field" id="dn" maxlength="40" value="${esc(v.title || "")}"></label></div>
-  <p class="note">בדקו שכל מילה נכונה, מחקו מה שלא שייך, והוסיפו מה שחסר.${v.rows.some(r=>r[2]) ? " תרגום שמסומן ב-🌐 נעשה אוטומטית, כדאי לבדוק אותו." : ""}</p>
+  <p class="note">בדקו שכל מילה נכונה, מחקו מה שלא שייך, והוסיפו מה שחסר (עד ${DICT_MAX} מילים). גוללים למטה כדי לעבור על כל הרשימה.${v.rows.some(r=>r[2]) ? " תרגום שמסומן ב-🌐 נעשה אוטומטית, כדאי לבדוק אותו." : ""}</p>
+  ${v.raw ? `<details class="note raw"><summary>הטקסט שגוגל קרא מהתמונה</summary><pre>${esc(v.raw)}</pre></details>` : ""}
   <div class="editrows">${v.rows.map((r,i)=>`<div class="er">
     <input class="field en" data-en="${i}" value="${esc(r[0])}" placeholder="English" autocomplete="off" autocapitalize="off" spellcheck="false">
     <input class="field" data-he="${i}" value="${esc(r[1])}" placeholder="תרגום">
     ${r[2] ? `<span class="auto" title="תרגום אוטומטי">🌐</span>` : `<span class="auto"></span>`}
     <button class="mk" data-rm="${i}" aria-label="מחיקת שורה">✕</button></div>`).join("")}</div>
-  <button class="btn no wide" data-a="add">➕ הוספת מילה</button>
+  <button class="btn no wide" data-a="add" ${v.rows.length >= DICT_MAX ? "disabled" : ""}>➕ הוספת מילה</button>
   <button class="btn no wide" data-a="tr">🌐 תרגום אוטומטי למילים בלי תרגום</button>
-  <button class="btn go wide" data-a="save">💾 שמירה ותרגול</button>
-  <div class="feedback bad" id="fb"></div>`;
+  <div class="savebar">
+    <div class="feedback bad" id="fb"></div>
+    <button class="btn go wide" data-a="save">💾 שמירה ותרגול · <span id="cnt">${v.rows.filter(r=>r[0].trim()).length}</span> מילים</button>
+  </div>`;
   const fb = document.getElementById("fb");
   document.getElementById("dn").oninput = e => { v.title = e.target.value; };
-  app.querySelectorAll("[data-en]").forEach(el=>el.oninput=()=>{ v.rows[+el.dataset.en][0] = el.value; });
+  const count = () => { document.getElementById("cnt").textContent = v.rows.filter(r=>r[0].trim()).length; };
+  app.querySelectorAll("[data-en]").forEach(el=>el.oninput=()=>{ v.rows[+el.dataset.en][0] = el.value; count(); });
   app.querySelectorAll("[data-he]").forEach(el=>el.oninput=()=>{ const r = v.rows[+el.dataset.he]; r[1] = el.value; r[2] = false; });
   app.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ v.rows.splice(+b.dataset.rm, 1); render(); });
   app.querySelector('[data-a="add"]').onclick=()=>{
@@ -1331,6 +1339,7 @@ function dictEditScreen(){
       words.push([en, he]);
     }
     if(words.length < 2){ fb.textContent = "צריך לפחות 2 מילים."; return; }
+    if(words.length > DICT_MAX){ fb.textContent = `אפשר עד ${DICT_MAX} מילים בהכתבה אחת. מחקו ${words.length - DICT_MAX} מילים.`; return; }
     const name = (v.title || "").trim() || defaultDictName();
     let id = v.id;
     if(id){ const d = dictById(id); d.name = name; d.words = words; }
