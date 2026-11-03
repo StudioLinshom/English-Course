@@ -251,35 +251,37 @@ function ocr_(b64, mime) {
   }
 }
 
-// Turns OCR text into [english, hebrew] pairs. Handles numbered lists, "word - תרגום" lines,
-// and comma separated words; skips sentences and OCR noise.
+// Turns OCR text into [english, hebrew] pairs. Each line is split into runs of English and
+// Hebrew (numbers, commas and dashes separate runs). When a line has as many Hebrew runs as
+// English runs they are paired in order; otherwise translations are left for Google Translate.
+// Long English runs (a row of words read as one line) are split into single words, so nothing
+// is dropped; the review screen lets the parent delete leftovers.
+const MAX_WORDS = 50;
 function parseWords_(text) {
   const out = [], seen = {};
   const add = (en, he) => {
-    en = en.replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').replace(/^[-' ]+|[-' ]+$/g, '').trim();
+    if (out.length >= MAX_WORDS) return;
+    en = en.replace(/[’‘`]/g, "'").replace(/^[-' ]+|[-' ]+$/g, '').trim();
     if (en.length < 2 && en !== 'a' && en !== 'I') return;
     if (en !== 'I') en = en.toLowerCase();
     if (seen[en]) return;
     seen[en] = 1;
     out.push([en, he || '']);
   };
+  const addRun = (en, he) => {
+    const parts = en.split(' ');
+    if (parts.length <= 2 || (he && parts.length <= 4)) add(en, he);
+    else parts.forEach(p => add(p, ''));
+  };
+  const RUN = /[A-Za-z][A-Za-z'’\-]*(?: [A-Za-z][A-Za-z'’\-]*)*|[\u0590-\u05FF][\u0590-\u05FF'"׳״\-]*(?: [\u0590-\u05FF][\u0590-\u05FF'"׳״\-]*)*/g;
   String(text || '').split(/\r?\n/).forEach(line => {
-    line = line.replace(/^\s*[\(\[]?\d{1,3}\s*[\.\)\]:\-]?\s*/, '').trim();
-    if (!line) return;
-    const heMatch = line.match(/[\u0590-\u05FF][\u0590-\u05FF\s'"׳״\/,\-()]*/);
-    const he = heMatch ? heMatch[0].replace(/[\s,\-\/(]+$/, '').trim() : '';
-    const enText = line.replace(/[\u0590-\u05FF]+/g, ' ');
-    const chunks = he ? [enText] : enText.split(/[,;\/|•·]+/);
-    chunks.forEach(chunk => {
-      const m = chunk.match(/[A-Za-z][A-Za-z'’\- ]*[A-Za-z]|[A-Za-z]/);
-      if (!m) return;
-      const parts = m[0].trim().split(/\s+/);
-      if (parts.length > 4) return;                      // a sentence, not a word
-      if (!he && parts.length > 2) parts.forEach(p => add(p, ''));
-      else add(m[0], he);
-    });
+    const runs = (line.replace(/\s+/g, ' ').match(RUN) || []).map(t => t.trim());
+    const en = runs.filter(t => !/[\u0590-\u05FF]/.test(t));
+    const he = runs.filter(t => /[\u0590-\u05FF]/.test(t));
+    if (he.length && he.length === en.length) en.forEach((e, i) => addRun(e, he[i]));
+    else en.forEach(e => addRun(e, ''));
   });
-  return out.slice(0, 60);
+  return out;
 }
 
 // Fills missing Hebrew with Google Translate; the third item marks an automatic translation.

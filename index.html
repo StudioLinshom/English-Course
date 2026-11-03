@@ -62,6 +62,9 @@ h2{font-size:18px;margin:26px 0 10px}
 .mode.review{margin-top:12px}
 .mode.review.due{border-color:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb, var(--sun) 35%, transparent)}
 .mode.gram{margin-top:12px}
+.week.sent{border-style:dashed}
+.week.sent:disabled{opacity:.6}
+.week.test{border-color:var(--sun)}
 .mode.dict{margin-top:12px}
 .filebtn{display:block;text-align:center;cursor:pointer}
 .filebtn.busy,[data-a=manual].busy{opacity:.5;pointer-events:none}
@@ -71,6 +74,10 @@ h2{font-size:18px;margin:26px 0 10px}
 .er{display:grid;grid-template-columns:1fr 1fr 20px 34px;gap:6px;align-items:center}
 .er .field{padding:10px;font-size:16px}
 .er .auto{font-size:14px;text-align:center}
+.savebar{position:sticky;bottom:0;z-index:5;background:var(--chalk);padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px));margin-top:6px;box-shadow:0 -10px 12px -10px rgba(0,0,0,.18)}
+.savebar .btn{margin-top:4px}
+.savebar .feedback{margin-top:0;min-height:0}
+details.raw pre{white-space:pre-wrap;direction:ltr;text-align:left;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:8px;font-size:13px;max-height:180px;overflow:auto}
 .mascot.emoji{display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .buddy{cursor:pointer}
 .bubble small{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}
@@ -285,7 +292,7 @@ function useLevel(n){ WEEKS = LEVELS[n-1].weeks; ALL = LEVEL_WORDS[n-1]; }
 const MASTER = 3, ROUND = 10;
 
 /* ---------- state + storage ---------- */
-const fresh = () => ({score:{}, wrong:{}, days:[], placed:false, placedLv:{}, unlocked:{}, level:1, seen:{}, forgot:{}, lastReview:"", gscore:{}, gwrong:{}, gseen:{}, gunlocked:{}, dict:[], updated:""});
+const fresh = () => ({score:{}, wrong:{}, days:[], placed:false, placedLv:{}, unlocked:{}, level:1, seen:{}, forgot:{}, lastReview:"", gscore:{}, gwrong:{}, gseen:{}, gunlocked:{}, ltest:{}, dict:[], updated:""});
 let S = fresh();
 const API = "https://script.google.com/macros/s/AKfycbx7OlcWD9IdMyp_s0ngiI7V1r453A_nfY-pvUR0b-YUdtOmXxKqZTLJ193OyTaGN_16/exec";
 // The first, single-user version saved under this key; devices that still hold that data become Yoav's user.
@@ -309,8 +316,8 @@ function normalize(){
   S.seen = S.seen || {}; S.forgot = S.forgot || {}; S.lastReview = S.lastReview || "";
   S.gscore = S.gscore || {}; S.gwrong = S.gwrong || {}; S.gseen = S.gseen || {}; S.gunlocked = S.gunlocked || {};
   S.dict = Array.isArray(S.dict) ? S.dict : [];
-  migrateUnitKeys();
-  keepOpenUnits();
+  S.ltest = S.ltest || {};
+  migrateTenses();
   S.unlocked = S.unlocked || {};
   S.level = S.level >= 1 && S.level <= LEVELS.length && isOpen(S.level) ? S.level : 1;
   keepOpenLevels();
@@ -325,7 +332,7 @@ function keepOpenLevels(){
 function setLevel(n){ S.level = n; useLevel(n); save(); go({name:"home"}); }
 function writeLocal(){ if(USER) lsSet(lsKey(USER), JSON.stringify(S)); }
 function save(){
-  keepOpenLevels(); keepOpenUnits();
+  keepOpenLevels();
   S.updated = new Date().toISOString();
   writeLocal();
   pending = true;
@@ -688,7 +695,7 @@ function home(){
   const key = USER + ":" + S.level, grew = lastShown[key] !== undefined && k > lastShown[key];
   lastShown[key] = k;
   app.innerHTML = `
-  <div class="who"><span>שלום ${esc(USERNAME)} 👋</span><span><button class="ghost sm" data-a="sound" aria-label="צלילים">${soundOn() ? "🔊" : "🔇"}</button> <button class="ghost sm" data-a="users">החלפת משתמש</button></span></div>
+  <div class="who"><span>שלום ${esc(USERNAME)} 👋</span><span><button class="ghost sm" data-a="dicts">📷 הכתבות</button> <button class="ghost sm" data-a="sound" aria-label="צלילים">${soundOn() ? "🔊" : "🔇"}</button> <button class="ghost sm" data-a="users">החלפת משתמש</button></span></div>
   <section class="board">
     <h1>${LEVEL_ICONS[S.level-1]} 100 מילים באנגלית · שלב ${S.level}</h1>
     <div class="big"><span class="n ${grew ? "grow" : ""}">${k}</span><span class="of">מתוך 100 מילים שאתה יודע</span></div>
@@ -701,8 +708,6 @@ function home(){
   ${nextLevelNote(k)}
   ${!S.placedLv[S.level] ? `<button class="mode" style="margin-top:16px" data-a="place"><b>🔍 מבחן פתיחה</b><span>עוברים על כל 100 המילים ומסמנים מה כבר יודעים. לוקח כ-10 דקות.</span></button>`:""}
   ${reviewCard()}
-  ${grammarCard()}
-  ${dictCard()}
   <h2>השבועות</h2>
   <div class="weeks">
     ${WEEKS.map(w=>{ const list=ALL.filter(x=>x.week===w.n), kk=known(list), p=Math.round(kk/list.length*100);
@@ -711,12 +716,15 @@ function home(){
         <span class="t"><b>${w.name}</b><span>${kk} מתוך ${list.length} מילים</span><span class="mini"><i style="width:${p}%"></i></span></span>
       </button>`;}).join("")}
     <button class="week" data-w="8"><span class="num ic">🔄<small>8</small></span><span class="t"><b>חזרה על הכל</b><span>בוחן מעורב, עם עדיפות למילים שעוד לא נתפסו</span></span></button>
+    ${testTile()}
+    ${tensesTile()}
   </div>
   <div class="links"><button class="ghost" data-a="parent">👪 מסך הורה</button><span class="sync" id="sync" data-s="${syncState}">${SYNC_TEXT[syncState]}</span></div>`;
   app.querySelectorAll("[data-w]").forEach(b=>b.onclick=()=>go({name:"week",w:+b.dataset.w}));
   app.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>setLevel(+b.dataset.l));
   const rv = app.querySelector('[data-a="review"]'); if(rv) rv.onclick=startReview;
-  app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"grammar"});
+  app.querySelector('[data-a="ltest"]').onclick=startTest;
+  const tn = app.querySelector('[data-a="tenses"]'); if(tn) tn.onclick=()=>go({name:"grammar", lv:S.level});
   app.querySelector('[data-a="dicts"]').onclick=()=>go({name:"dicts"});
   const nx = app.querySelector('[data-a="next"]'); if(nx) nx.onclick=()=>setLevel(S.level+1);
   const pl = app.querySelector('[data-a="place"]'); if(pl) pl.onclick=()=>start("place", ALL);
@@ -749,7 +757,7 @@ function weekScreen(){
   </div>
   ${d || w!==8 ? `<div class="wordlist">${list.map((x,k)=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="dots">${[0,1,2].map(i=>`<i class="${sc(x.en)>i?'on':''}"></i>`).join("")}</span><button class="mk ${sc(x.en)>=MASTER?'on':''}" data-k="${k}" aria-pressed="${sc(x.en)>=MASTER}">${sc(x.en)>=MASTER?'✓ יודע':'יודע'}</button></div>`).join("")}</div>
   <p class="note">3 נקודות ירוקות = המילה נתפסה. תשובה שגויה מאפסת את הנקודות. אפשר ללחוץ "יודע" כדי לסמן מילה כידועה.</p>`:""}
-  ${d ? `<div class="links"><button class="ghost" data-a="edit">✏️ עריכת המילים</button><button class="ghost" data-a="del">🗑️ מחיקת ההכתבה</button></div>` : ""}`;
+  ${d ? `<div class="links"><button class="ghost" data-a="rename">✏️ שינוי שם</button><button class="ghost" data-a="edit">📝 עריכת המילים</button><button class="ghost" data-a="del">🗑️ מחיקת ההכתבה</button></div>` : ""}`;
   app.querySelector('[data-a="home"]').onclick=()=>go(d ? {name:"dicts"} : {name:"home"});
   app.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>start(b.dataset.m, list));
   app.querySelectorAll(".mk").forEach(b=>b.onclick=()=>{
@@ -759,6 +767,11 @@ function weekScreen(){
     save(); const y=window.scrollY; render(); window.scrollTo(0,y);
   });
   if(d){
+    app.querySelector('[data-a="rename"]').onclick=()=>{
+      const name = (prompt("שם חדש להכתבה:", d.name) || "").trim().slice(0, 40);
+      if(!name || name === d.name) return;
+      d.name = name; save(); render(); flash("השם עודכן");
+    };
     app.querySelector('[data-a="edit"]').onclick=()=>go({name:"dictedit", id:d.id, title:d.name, rows:d.words.map(r=>[r[0], r[1]])});
     app.querySelector('[data-a="del"]').onclick=()=>{
       if(!confirm(`למחוק את "${d.name}"? ההתקדמות במילים עצמן נשמרת.`)) return;
@@ -813,9 +826,11 @@ function reviewCard(){
 function play(){
   const v=view, x=v.items[v.i];
   if(!x){ if(v.review){ S.lastReview = today(); save(); }
+    if(v.mode==="test") return finishTest(v);
     if(v.mode==="place"){ S.placedLv[S.level]=true; if(S.level===1) S.placed=true; save(); } return go({name:"result", mode:v.mode, right:v.right, total:v.items.length, missed:v.missed, back:v.back}); }
-  const head = `<div class="top"><button class="back" data-a="quit">יציאה</button><span class="title">${v.review ? "חזרה על שלבים קודמים" : {flash:"כרטיסיות",quiz:"בוחן",type:"כתיבה",place:"מבחן פתיחה"}[v.mode]}</span></div>
+  const head = `<div class="top"><button class="back" data-a="quit">יציאה</button><span class="title">${v.review ? "חזרה על שלבים קודמים" : {flash:"כרטיסיות",quiz:"בוחן",type:"כתיבה",place:"מבחן פתיחה",test:`🏁 מבחן שלב ${v.lv}`}[v.mode]}</span></div>
   <div class="progress">${v.i+1} מתוך ${v.items.length}</div>`;
+  const m = v.mode==="test" ? (v.i%3===2 ? "type" : "quiz") : v.mode; // the level test mixes choosing and typing
   const pastLine = x.past ? `<div class="hint">עבר: <span class="en">${esc(x.past)}</span></div>` : "";
 
   if(v.mode==="flash" || v.mode==="place"){
@@ -843,7 +858,7 @@ function play(){
     }
   }
 
-  if(v.mode==="quiz"){
+  if(m==="quiz"){
     const toEn = Math.random()<.5;
     const others = shuffle((v.pool.length>=4?v.pool:ALL).filter(o=>o.en!==x.en)).slice(0,3);
     const opts = shuffle([x,...others]);
@@ -866,7 +881,7 @@ function play(){
     });
   }
 
-  if(v.mode==="type"){
+  if(m==="type"){
     app.innerHTML = head + `
       <div class="card pop"><div class="he">${esc(x.he)}</div><div class="hint">כתוב באנגלית (${x.en.length} אותיות${x.en.includes(" ")?", כולל רווח":""})</div></div>
       <input class="type en" id="inp" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="type here">
@@ -887,12 +902,13 @@ function play(){
     app.querySelector('[data-a="check"]').onclick=check;
     inp.onkeydown=e=>{ if(e.key==="Enter"){ inp.disabled ? next() : check(); } };
   }
-  app.querySelector('[data-a="quit"]').onclick=()=>{ save(); go(v.back || {name:"home"}); };
+  app.querySelector('[data-a="quit"]').onclick=()=>{ if(v.mode==="test" && v.i>0 && !confirm("לצאת מהמבחן? הציון לא יישמר.")) return; save(); go(v.back || {name:"home"}); };
   function next(){ if(view!==v) return; v.i++; save(); render(); }
 }
 
 function result(){
   const v=view;
+  if(v.mode==="test") return testResult();
   const msg = v.mode==="place" ? "מבחן הפתיחה הסתיים. מכאן מתחילים לעבוד שבוע אחרי שבוע."
     : v.right===v.total ? "מושלם! כל התשובות נכונות." : v.right/v.total>=.7 ? "יפה מאוד. עוד קצת חזרה וזה שלך." : "התחלה טובה. כדאי לעשות עוד סבב כרטיסיות.";
   app.innerHTML = `
@@ -1061,31 +1077,74 @@ const GRAMMAR = [
   {"t":"order","he":"חיכינו עד שהאוטובוס הגיע.","w":"We waited until the bus came","d":"after","alt":[],"p":"."},
   {"t":"order","he":"הייתי צמא, אז שתיתי מים.","w":"I was thirsty so I drank water","d":"because","alt":[],"p":"."}]}];
 GRAMMAR.forEach(u => u.items.forEach((it, i) => { it.id = u.id + ":" + i; }));
+// Levels 2-5: the same six tenses, with sentences built from that level's words (12 each).
+const LEVEL_TENSES = {"2":{"ps":[{"t":"fill","s":"My head ___ when I don't sleep.","he":"הראש שלי כואב כשאני לא ישן.","a":"hurts","o":["hurt","hurted","hurting"]},{"t":"fill","s":"The farmer ___ up early every morning.","he":"החקלאי קם מוקדם כל בוקר.","a":"gets","o":["get","got","getting"]},{"t":"fill","s":"We usually ___ football on the weekend.","he":"בדרך כלל אנחנו משחקים כדורגל בסוף השבוע.","a":"play","o":["plays","played","playing"]},{"t":"fill","s":"My sister ___ like rain.","he":"אחותי לא אוהבת גשם.","a":"doesn't","o":["don't","isn't","didn't"]},{"t":"choose","he":"הרופא עוזר לאנשים חולים.","a":"The doctor helps sick people.","o":["The doctor help sick people.","The doctor helping sick people."]},{"t":"choose","he":"אתה לובש מעיל בחורף?","a":"Do you wear a jacket in winter?","o":["Does you wear a jacket in winter?","Do you wears a jacket in winter?"]},{"t":"order","he":"הטייס טס כל שבוע.","w":"The pilot flies every week","d":"fly","alt":[],"p":"."},{"t":"order","he":"אני מבין את המורה.","w":"I understand the teacher","d":"understands","alt":[],"p":"."},{"t":"order","he":"היא מציירת בימי שישי.","w":"She draws on Fridays","d":"draw","alt":["On Fridays she draws"],"p":"."},{"t":"order","he":"הנהג לא עובד בסוף השבוע.","w":"The driver doesn't work on the weekend","d":"don't","alt":["On the weekend the driver doesn't work"],"p":"."},{"t":"order","he":"לעיתים קרובות יורד גשם בחורף.","w":"It often rains in winter","d":"rain","alt":["In winter it often rains"],"p":"."},{"t":"order","he":"הוא מבשל ארוחת ערב?","w":"Does he cook dinner","d":"Do","alt":[],"p":"?"}],"pc":[{"t":"fill","s":"Look! The children ___ in the river.","he":"תראה! הילדים שוחים בנהר.","a":"are swimming","o":["swim","is swimming","swam"]},{"t":"fill","s":"I ___ a picture now.","he":"אני מצייר תמונה עכשיו.","a":"am drawing","o":["draw","is drawing","drew"]},{"t":"fill","s":"It ___ snowing on the mountain.","he":"יורד שלג על ההר.","a":"is","o":["are","am","does"]},{"t":"fill","s":"We ___ waiting for the doctor.","he":"אנחנו מחכים לרופא.","a":"are","o":["is","am","do"]},{"t":"choose","he":"הוא לובש חולצה כחולה היום.","a":"He is wearing a blue shirt today.","o":["He wearing a blue shirt today.","He are wearing a blue shirt today."]},{"t":"choose","he":"הם משחקים במשחק?","a":"Are they playing the game?","o":["Do they playing the game?","Is they playing the game?"]},{"t":"order","he":"הרוח נושבת חזק.","w":"The wind is blowing hard","d":"blows","alt":[],"p":"."},{"t":"order","he":"הפועל בונה בית חדש.","w":"The worker is building a new house","d":"builds","alt":[],"p":"."},{"t":"order","he":"אני לובש נעליים חדשות.","w":"I am wearing new shoes","d":"wear","alt":[],"p":"."},{"t":"order","he":"האחות לא ישנה עכשיו.","w":"The nurse isn't sleeping now","d":"doesn't","alt":[],"p":"."},{"t":"order","he":"השחקן רץ מהר?","w":"Is the player running fast","d":"Does","alt":[],"p":"?"},{"t":"order","he":"אבא שלי מחזיק את הכלב.","w":"My father is holding the dog","d":"holds","alt":[],"p":"."}],"pa":[{"t":"fill","s":"Yesterday I ___ a pain in my knee.","he":"אתמול הרגשתי כאב בברך.","a":"felt","o":["feel","feeled","feels"]},{"t":"fill","s":"We ___ our teacher at the park last week.","he":"פגשנו את המורה שלנו בפארק בשבוע שעבר.","a":"met","o":["meet","meeted","meets"]},{"t":"fill","s":"She ___ a letter to her grandmother.","he":"היא שלחה מכתב לסבתא שלה.","a":"sent","o":["send","sended","sends"]},{"t":"fill","s":"Did you ___ the ball?","he":"תפסת את הכדור?","a":"catch","o":["caught","catches","catched"]},{"t":"choose","he":"הוא נפל ושבר את האצבע.","a":"He fell and broke his finger.","o":["He falled and broke his finger.","He fall and broke his finger."]},{"t":"choose","he":"לא שמעתי את השאלה.","a":"I didn't hear the question.","o":["I didn't heard the question.","I not heard the question."]},{"t":"order","he":"הסופר כתב ספר מפורסם.","w":"The writer wrote a famous book","d":"writes","alt":[],"p":"."},{"t":"order","he":"לפני שנה ביקרנו באי.","w":"A year ago we visited an island","d":"visit","alt":["We visited an island a year ago"],"p":"."},{"t":"order","he":"המדען מצא משהו חדש.","w":"The scientist found something new","d":"find","alt":[],"p":"."},{"t":"order","he":"שילמתי על החולצה.","w":"I paid for the shirt","d":"pay","alt":[],"p":"."},{"t":"order","he":"היה קר אתמול בלילה.","w":"It was cold last night","d":"is","alt":["Last night it was cold"],"p":"."},{"t":"order","he":"המורה לימדה אתכם את המילה?","w":"Did the teacher teach you the word","d":"taught","alt":[],"p":"?"}],"im":[{"t":"fill","s":"___ your jacket, it is cold outside!","he":"תלבש את המעיל, קר בחוץ!","a":"Wear","o":["Wears","Wore","Wearing"]},{"t":"fill","s":"___ touch the dirty shoes!","he":"אל תיגע בנעליים המלוכלכות!","a":"Don't","o":["Doesn't","Not","No"]},{"t":"fill","s":"Please ___ me your picture.","he":"בבקשה תראה לי את הציור שלך.","a":"show","o":["shows","showed","showing"]},{"t":"fill","s":"___ go to the beach this weekend!","he":"בואו נלך לים בסוף השבוע!","a":"Let's","o":["Lets","Let","We"]},{"t":"choose","he":"קח את התרופה אחרי ארוחת הערב.","a":"Take the medicine after dinner.","o":["Takes the medicine after dinner.","You taking the medicine after dinner."]},{"t":"choose","he":"אל תאחר לעבודה!","a":"Don't be late for work!","o":["Don't late for work!","Not be late for work!"]},{"t":"order","he":"תחזיק את הכדור בשתי הידיים.","w":"Hold the ball with both hands","d":"holds","alt":[],"p":"."},{"t":"order","he":"שלח לי תמונה.","w":"Send me a picture","d":"sent","alt":[],"p":"."},{"t":"order","he":"אל תשכח את הכובע שלך.","w":"Don't forget your hat","d":"forgot","alt":[],"p":"."},{"t":"order","he":"בוא נצייר את ההר.","w":"Let's draw the mountain","d":"drew","alt":[],"p":"."},{"t":"order","he":"תשמור על הבגדים שלך נקיים.","w":"Keep your clothes clean","d":"kept","alt":[],"p":"."},{"t":"order","he":"בבקשה תחכו לרופא.","w":"Please wait for the doctor","d":"waits","alt":[],"p":"."}],"fu":[{"t":"fill","s":"Tomorrow it ___ rain.","he":"מחר ירד גשם.","a":"will","o":["is","does","was"]},{"t":"fill","s":"I ___ going to visit the forest next weekend.","he":"אני הולך לבקר ביער בסוף השבוע הבא.","a":"am","o":["is","are","will"]},{"t":"fill","s":"She ___ be a famous artist one day.","he":"יום אחד היא תהיה אמנית מפורסמת.","a":"will","o":["is","does","going"]},{"t":"fill","s":"We won't ___ late.","he":"אנחנו לא נאחר.","a":"be","o":["are","being","is"]},{"t":"choose","he":"הוא יתחיל עבודה חדשה בחודש הבא.","a":"He will begin a new job next month.","o":["He will begins a new job next month.","He will began a new job next month."]},{"t":"choose","he":"אתם הולכים לשחק במשחק?","a":"Are you going to play the game?","o":["Do you going to play the game?","Are you go to play the game?"]},{"t":"order","he":"אני אלבש את החולצה החדשה שלי.","w":"I will wear my new shirt","d":"wore","alt":[],"p":"."},{"t":"order","he":"בעוד שעה נגיע להר.","w":"In an hour we will arrive at the mountain","d":"arrived","alt":["We will arrive at the mountain in an hour"],"p":"."},{"t":"order","he":"הם הולכים לבנות בית ליד הנהר.","w":"They are going to build a house near the river","d":"built","alt":[],"p":"."},{"t":"order","he":"האחות לא תשכח את התרופה.","w":"The nurse won't forget the medicine","d":"forgot","alt":[],"p":"."},{"t":"order","he":"מתי תשלם?","w":"When will you pay","d":"paid","alt":[],"p":"?"},{"t":"order","he":"בקרוב יהיה חם.","w":"It will be warm soon","d":"was","alt":["Soon it will be warm"],"p":"."}],"lk":[{"t":"fill","s":"I stayed in bed ___ I had a fever.","he":"נשארתי במיטה כי היה לי חום.","a":"because","o":["so","but","or"]},{"t":"fill","s":"It started to rain, ___ we went inside.","he":"התחיל לרדת גשם, אז נכנסנו פנימה.","a":"so","o":["because","but","if"]},{"t":"fill","s":"He is strong, ___ he is slow.","he":"הוא חזק, אבל הוא איטי.","a":"but","o":["so","because","if"]},{"t":"fill","s":"___ it snows, we will stay home.","he":"אם ירד שלג, נישאר בבית.","a":"If","o":["But","So","Because"]},{"t":"choose","he":"שטפתי את הידיים לפני שאכלתי.","a":"I washed my hands before I ate.","o":["I washed my hands so I ate.","I washed my hands but I ate."]},{"t":"choose","he":"אתה רוצה חולצה או מעיל?","a":"Do you want a shirt or a jacket?","o":["Do you want a shirt but a jacket?","Do you want a shirt so a jacket?"]},{"t":"order","he":"אחרי המשחק הלכנו הביתה.","w":"After the game we went home","d":"before","alt":["We went home after the game"],"p":"."},{"t":"order","he":"לעיתים קרובות יורד גשם כשהשמיים חשוכים.","w":"It often rains when the sky is dark","d":"if","alt":["When the sky is dark it often rains"],"p":"."},{"t":"order","he":"הנהג עצר כי הייתה סערה.","w":"The driver stopped because there was a storm","d":"so","alt":[],"p":"."},{"t":"order","he":"חיכינו עד שהרופא הגיע.","w":"We waited until the doctor came","d":"after","alt":[],"p":"."},{"t":"order","he":"הוא עשיר אבל הוא לא שמח.","w":"He is rich but he is not happy","d":"so","alt":[],"p":"."},{"t":"order","he":"היא אכלה ואז שתתה מים.","w":"She ate and then she drank water","d":"because","alt":[],"p":"."}]},"3":{"ps":[{"t":"fill","s":"A bird ___ with its wings.","he":"ציפור עפה עם הכנפיים שלה.","a":"flies","o":["fly","flew","flying"]},{"t":"fill","s":"My uncle ___ a bus.","he":"הדוד שלי נוהג באוטובוס.","a":"drives","o":["drive","drove","driving"]},{"t":"fill","s":"Cows ___ eat meat.","he":"פרות לא אוכלות בשר.","a":"don't","o":["doesn't","isn't","aren't"]},{"t":"fill","s":"___ your brother speak English?","he":"אח שלך מדבר אנגלית?","a":"Does","o":["Do","Is","Are"]},{"t":"choose","he":"היא תמיד מנומסת.","a":"She is always polite.","o":["She always polite.","She are always polite."]},{"t":"choose","he":"הם נוסעים ברכבת כל יום.","a":"They travel by train every day.","o":["They travels by train every day.","They traveling by train every day."]},{"t":"order","he":"הארנב מתחבא מתחת לספה.","w":"The rabbit hides under the sofa","d":"hide","alt":[],"p":"."},{"t":"order","he":"אני חושב שהוא חכם.","w":"I think he is smart","d":"thinks","alt":[],"p":"."},{"t":"order","he":"המפתח לא במגירה.","w":"The key isn't in the drawer","d":"doesn't","alt":[],"p":"."},{"t":"order","he":"הקוף אוהב בננות.","w":"The monkey likes bananas","d":"like","alt":[],"p":"."},{"t":"order","he":"אח שלי מספר סיפורים מצחיקים.","w":"My brother tells funny stories","d":"tell","alt":[],"p":"."},{"t":"order","he":"איפה אתם שומרים את המגבות?","w":"Where do you keep the towels","d":"does","alt":[],"p":"?"}],"pc":[{"t":"fill","s":"Look! The horse ___ fast.","he":"תראה! הסוס רץ מהר.","a":"is running","o":["runs","are running","ran"]},{"t":"fill","s":"The passengers ___ for the train.","he":"הנוסעים מחכים לרכבת.","a":"are waiting","o":["is waiting","wait","waited"]},{"t":"fill","s":"Why ___ the baby crying?","he":"למה התינוק בוכה?","a":"is","o":["are","does","do"]},{"t":"fill","s":"I ___ not riding my bicycle today.","he":"אני לא רוכב על האופניים היום.","a":"am","o":["is","are","do"]},{"t":"choose","he":"היא מחפשת את הסיסמה.","a":"She is searching for the password.","o":["She searching for the password.","She is search for the password."]},{"t":"choose","he":"אתה מדבר בטלפון?","a":"Are you speaking on the phone?","o":["Do you speaking on the phone?","Are you speak on the phone?"]},{"t":"order","he":"הדוב ישן עכשיו.","w":"The bear is sleeping now","d":"sleeps","alt":[],"p":"."},{"t":"order","he":"אנחנו טסים לאי.","w":"We are flying to an island","d":"fly","alt":[],"p":"."},{"t":"order","he":"הילדים צועקים בחוץ.","w":"The children are shouting outside","d":"shout","alt":[],"p":"."},{"t":"order","he":"אמא שלי מורידה את הקובץ.","w":"My mother is downloading the file","d":"downloads","alt":[],"p":"."},{"t":"order","he":"הנחש לא זז.","w":"The snake isn't moving","d":"doesn't","alt":[],"p":"."},{"t":"order","he":"מה אתה קורא?","w":"What are you reading","d":"do","alt":[],"p":"?"}],"pa":[{"t":"fill","s":"The man ___ his old car last month.","he":"האיש מכר את המכונית הישנה שלו בחודש שעבר.","a":"sold","o":["sell","selled","sells"]},{"t":"fill","s":"My grandfather ___ me a funny story.","he":"סבא שלי סיפר לי סיפור מצחיק.","a":"told","o":["tell","telled","tells"]},{"t":"fill","s":"We ___ to London by plane.","he":"טסנו ללונדון במטוס.","a":"flew","o":["fly","flied","flies"]},{"t":"fill","s":"Somebody ___ my bicycle yesterday!","he":"מישהו גנב את האופניים שלי אתמול!","a":"stole","o":["steal","stealed","steals"]},{"t":"choose","he":"הוא לא השאיל לי את המפתח.","a":"He didn't lend me the key.","o":["He didn't lent me the key.","He not lent me the key."]},{"t":"choose","he":"התינוק בכה כל הלילה.","a":"The baby cried all night.","o":["The baby cryed all night.","The baby cry all night."]},{"t":"order","he":"התרנגולות גדלו מהר.","w":"The chickens grew fast","d":"grow","alt":[],"p":"."},{"t":"order","he":"רכבתי על סוס בטיול.","w":"I rode a horse on the trip","d":"ride","alt":[],"p":"."},{"t":"order","he":"היא הפכה לרופאה.","w":"She became a doctor","d":"become","alt":[],"p":"."},{"t":"order","he":"חשבתי על הסיפור.","w":"I thought about the story","d":"think","alt":[],"p":"."},{"t":"order","he":"הם זרקו את הכדור לכלב.","w":"They threw the ball to the dog","d":"throw","alt":[],"p":"."},{"t":"order","he":"מתי הגעתם לתחנה?","w":"When did you arrive at the station","d":"arrived","alt":[],"p":"?"}],"im":[{"t":"fill","s":"___ the door when you leave.","he":"תנעל את הדלת כשאתה יוצא.","a":"Lock","o":["Locks","Locked","Locking"]},{"t":"fill","s":"___ be rude to your friends.","he":"אל תהיה גס רוח לחברים שלך.","a":"Don't","o":["Doesn't","Not","No"]},{"t":"fill","s":"___ take the train!","he":"בוא ניסע ברכבת!","a":"Let's","o":["Lets","Let","We"]},{"t":"fill","s":"Please ___ me your map.","he":"בבקשה תשאיל לי את המפה שלך.","a":"lend","o":["lends","lent","lending"]},{"t":"choose","he":"תהיה אמיץ!","a":"Be brave!","o":["Are brave!","Being brave!"]},{"t":"choose","he":"אל תגיד לאף אחד את הסיסמה.","a":"Don't tell anyone the password.","o":["Not tell anyone the password.","Doesn't tell anyone the password."]},{"t":"order","he":"תכתוב משפט עם המילה.","w":"Write a sentence with the word","d":"wrote","alt":[],"p":"."},{"t":"order","he":"שים את הספל על המדף.","w":"Put the cup on the shelf","d":"puts","alt":[],"p":"."},{"t":"order","he":"אל תזרוק את הכרטיס.","w":"Don't throw away the ticket","d":"threw","alt":[],"p":"."},{"t":"order","he":"בוא נבקר את הסוסים.","w":"Let's visit the horses","d":"visited","alt":[],"p":"."},{"t":"order","he":"דבר לאט בבקשה.","w":"Please speak slowly","d":"spoke","alt":[],"p":"."},{"t":"order","he":"תהיה רגוע ותחשוב.","w":"Be calm and think","d":"thought","alt":[],"p":"."}],"fu":[{"t":"fill","s":"Next year I ___ travel to Paris.","he":"בשנה הבאה אסע לפריז.","a":"will","o":["am","did","was"]},{"t":"fill","s":"The plane ___ going to arrive soon.","he":"המטוס עומד להגיע בקרוב.","a":"is","o":["are","will","does"]},{"t":"fill","s":"I think the lion ___ be hungry.","he":"אני חושב שהאריה יהיה רעב.","a":"will","o":["is","does","going"]},{"t":"fill","s":"They won't ___ the house.","he":"הם לא ימכרו את הבית.","a":"sell","o":["sold","sells","selling"]},{"t":"choose","he":"אני אתקשר אליך בערב.","a":"I will call you in the evening.","o":["I will calling you in the evening.","I will to call you in the evening."]},{"t":"choose","he":"תספר לי את הסיפור?","a":"Will you tell me the story?","o":["Do you will tell me the story?","Will you telling me the story?"]},{"t":"order","he":"הם הולכים לנסוע ברכבת.","w":"They are going to travel by train","d":"traveled","alt":[],"p":"."},{"t":"order","he":"אני אשאיל לך את המזוודה שלי.","w":"I will lend you my suitcase","d":"lent","alt":[],"p":"."},{"t":"order","he":"הציפור לא תעוף היום.","w":"The bird won't fly today","d":"flew","alt":[],"p":"."},{"t":"order","he":"מחר נבקר בתחנה.","w":"Tomorrow we will visit the station","d":"visited","alt":["We will visit the station tomorrow"],"p":"."},{"t":"order","he":"היא הולכת להיות מורה.","w":"She is going to become a teacher","d":"became","alt":[],"p":"."},{"t":"order","he":"מה תגיד לו?","w":"What will you tell him","d":"told","alt":[],"p":"?"}],"lk":[{"t":"fill","s":"I laughed ___ the story was funny.","he":"צחקתי כי הסיפור היה מצחיק.","a":"because","o":["so","but","or"]},{"t":"fill","s":"She is shy, ___ she is very kind.","he":"היא ביישנית, אבל היא מאוד אדיבה.","a":"but","o":["so","because","if"]},{"t":"fill","s":"The train was late, ___ we waited.","he":"הרכבת איחרה, אז חיכינו.","a":"so","o":["because","but","or"]},{"t":"fill","s":"Call me ___ you arrive.","he":"תתקשר אליי כשתגיע.","a":"when","o":["but","so","or"]},{"t":"choose","he":"אם תאבד את המפתח, לא תוכל להיכנס.","a":"If you lose the key, you can't come in.","o":["But you lose the key, you can't come in.","So you lose the key, you can't come in."]},{"t":"choose","he":"נעלתי את הדלת לפני שיצאתי.","a":"I locked the door before I left.","o":["I locked the door so I left.","I locked the door or I left."]},{"t":"order","he":"הוא כעס כי מישהו גנב את האופניים שלו.","w":"He was angry because someone stole his bicycle","d":"so","alt":[],"p":"."},{"t":"order","he":"אתה רוצה סוס או ארנב?","w":"Do you want a horse or a rabbit","d":"but","alt":[],"p":"?"},{"t":"order","he":"היא קראה את המכתב ואז בכתה.","w":"She read the letter and then she cried","d":"because","alt":[],"p":"."},{"t":"order","he":"לא נצא עד שהסערה תיגמר.","w":"We won't go out until the storm ends","d":"after","alt":[],"p":"."},{"t":"order","he":"אחרי הטיול היינו עייפים.","w":"After the trip we were tired","d":"before","alt":["We were tired after the trip"],"p":"."},{"t":"order","he":"הנחש התחבא כשהוא ראה אותנו.","w":"The snake hid when it saw us","d":"if","alt":[],"p":"."}]},"4":{"ps":[{"t":"fill","s":"We ___ math every Monday.","he":"אנחנו לומדים מתמטיקה בכל יום שני.","a":"learn","o":["learns","learned","learning"]},{"t":"fill","s":"The museum ___ at nine o'clock.","he":"המוזיאון נפתח בתשע.","a":"opens","o":["open","opened","opening"]},{"t":"fill","s":"My mother ___ sugar in her coffee.","he":"אמא שלי לא שמה סוכר בקפה.","a":"doesn't put","o":["don't put","doesn't puts","isn't put"]},{"t":"fill","s":"___ you eat breakfast every day?","he":"אתה אוכל ארוחת בוקר כל יום?","a":"Do","o":["Does","Are","Is"]},{"t":"choose","he":"התלמידים חוגגים כל שנה.","a":"The students celebrate every year.","o":["The students celebrates every year.","The students celebrating every year."]},{"t":"choose","he":"המסעדה פתוחה בשבת?","a":"Is the restaurant open on Saturday?","o":["Are the restaurant open on Saturday?","Is the restaurant opens on Saturday?"]},{"t":"order","he":"אני תמיד חולק את ארוחת הצהריים שלי.","w":"I always share my lunch","d":"shares","alt":[],"p":"."},{"t":"order","he":"הבניין הזה גבוה מאוד.","w":"This building is very high","d":"are","alt":[],"p":"."},{"t":"order","he":"היא חוזרת על המילים כל ערב.","w":"She repeats the words every evening","d":"repeat","alt":[],"p":"."},{"t":"order","he":"הם לא מבשלים אורז.","w":"They don't cook rice","d":"doesn't","alt":[],"p":"."},{"t":"order","he":"החייל שומר על העיר.","w":"The soldier protects the city","d":"protect","alt":[],"p":"."},{"t":"order","he":"מתי המסיבה מתחילה?","w":"When does the party start","d":"do","alt":[],"p":"?"}],"pc":[{"t":"fill","s":"Mom ___ dinner in the kitchen.","he":"אמא מכינה ארוחת ערב במטבח.","a":"is preparing","o":["prepares","are preparing","prepared"]},{"t":"fill","s":"Look! A huge crowd ___ in the square.","he":"תראה! קהל ענק מחכה בכיכר.","a":"is waiting","o":["waits","are wait","waited"]},{"t":"fill","s":"We ___ celebrating my birthday today.","he":"אנחנו חוגגים היום את יום ההולדת שלי.","a":"are","o":["is","am","do"]},{"t":"fill","s":"I can't talk now, I ___ my lunch.","he":"אני לא יכול לדבר עכשיו, אני אוכל את ארוחת הצהריים שלי.","a":"am eating","o":["eat","is eating","ate"]},{"t":"choose","he":"היא מחפשת את המחברת שלה.","a":"She is looking for her notebook.","o":["She looking for her notebook.","She is look for her notebook."]},{"t":"choose","he":"מה קורה פה?","a":"What is happening here?","o":["What happening here?","What does happening here?"]},{"t":"order","he":"התלמידים חוזרים על המילים.","w":"The students are repeating the words","d":"repeat","alt":[],"p":"."},{"t":"order","he":"אני מנסה להבין את השאלה.","w":"I am trying to understand the question","d":"tries","alt":[],"p":"."},{"t":"order","he":"אבא שלי הולך על הגשר.","w":"My father is walking across the bridge","d":"walks","alt":[],"p":"."},{"t":"order","he":"הם לא מקשיבים למורה.","w":"They aren't listening to the teacher","d":"don't","alt":[],"p":"."},{"t":"order","he":"אנחנו אוכלים מרק עכשיו.","w":"We are eating soup now","d":"eat","alt":[],"p":"."},{"t":"order","he":"את מזמינה את כולם?","w":"Are you inviting everyone","d":"Do","alt":[],"p":"?"}],"pa":[{"t":"fill","s":"Last year my aunt ___ a big wedding.","he":"בשנה שעברה הייתה לדודה שלי חתונה גדולה.","a":"had","o":["have","haved","has"]},{"t":"fill","s":"He ___ to help me with dinner.","he":"הוא הבטיח לעזור לי עם ארוחת הערב.","a":"promised","o":["promise","promises","promising"]},{"t":"fill","s":"What ___ at the party yesterday?","he":"מה קרה במסיבה אתמול?","a":"happened","o":["happen","happens","happening"]},{"t":"fill","s":"I ___ agree with him yesterday.","he":"אתמול לא הסכמתי איתו.","a":"didn't","o":["doesn't","wasn't","isn't"]},{"t":"choose","he":"הם הזמינו אותנו לארוחת ערב.","a":"They invited us to dinner.","o":["They inviting us to dinner.","They did invited us to dinner."]},{"t":"choose","he":"לא הייתי מוכן למבחן.","a":"I wasn't ready for the test.","o":["I weren't ready for the test.","I didn't ready for the test."]},{"t":"order","he":"קנינו מתנה ליום ההולדת שלה.","w":"We bought a gift for her birthday","d":"buy","alt":[],"p":"."},{"t":"order","he":"המנהל שינה את התאריך.","w":"The principal changed the date","d":"changes","alt":[],"p":"."},{"t":"order","he":"היא קיבלה ציון מצוין.","w":"She got a great grade","d":"gets","alt":[],"p":"."},{"t":"order","he":"אחרי בית הספר הם שיחקו בכיכר.","w":"After school they played in the square","d":"play","alt":["They played in the square after school"],"p":"."},{"t":"order","he":"לפני מאה שנה העיר הייתה קטנה.","w":"A century ago the city was small","d":"is","alt":["The city was small a century ago"],"p":"."},{"t":"order","he":"שתית את המיץ?","w":"Did you drink the juice","d":"drank","alt":[],"p":"?"}],"im":[{"t":"fill","s":"___ me the salt, please.","he":"תעביר לי את המלח, בבקשה.","a":"Pass","o":["Passes","Passed","Passing"]},{"t":"fill","s":"___ worry, everything is fine.","he":"אל תדאג, הכל בסדר.","a":"Don't","o":["Doesn't","Not","No"]},{"t":"fill","s":"___ celebrate together!","he":"בואו נחגוג ביחד!","a":"Let's","o":["Lets","Let","We"]},{"t":"fill","s":"Please ___ the sentence again.","he":"בבקשה תחזור על המשפט שוב.","a":"repeat","o":["repeats","repeated","repeating"]},{"t":"choose","he":"תשמרו על עצמכם ליד הנהר.","a":"Be safe near the river.","o":["Are safe near the river.","Being safe near the river."]},{"t":"choose","he":"אל תמשוך את הזנב של החתול!","a":"Don't pull the cat's tail!","o":["Not pull the cat's tail!","Doesn't pull the cat's tail!"]},{"t":"order","he":"תעקבו אחרי השלטים.","w":"Follow the signs","d":"follows","alt":[],"p":"."},{"t":"order","he":"תכין את התיק שלך למחר.","w":"Prepare your bag for tomorrow","d":"prepared","alt":[],"p":"."},{"t":"order","he":"בוא נאכל במסעדה.","w":"Let's eat at the restaurant","d":"ate","alt":[],"p":"."},{"t":"order","he":"תשמור את הדף הזה.","w":"Keep this page","d":"kept","alt":[],"p":"."},{"t":"order","he":"אל תשתמש במחק.","w":"Don't use the eraser","d":"used","alt":[],"p":"."},{"t":"order","he":"בבקשה תהיה מוכן בשמונה.","w":"Please be ready at eight","d":"are","alt":[],"p":"."}],"fu":[{"t":"fill","s":"Next week we ___ visit the museum.","he":"בשבוע הבא נבקר במוזיאון.","a":"will","o":["are","did","was"]},{"t":"fill","s":"I'm ___ to invite all my friends.","he":"אני הולך להזמין את כל החברים שלי.","a":"going","o":["go","will","went"]},{"t":"fill","s":"It ___ be a special day.","he":"זה יהיה יום מיוחד.","a":"will","o":["is","does","going"]},{"t":"fill","s":"Don't worry, I won't ___ the date.","he":"אל תדאג, לא אשכח את התאריך.","a":"forget","o":["forgot","forgets","forgetting"]},{"t":"choose","he":"אני אעזור לך להכין את הסלט.","a":"I will help you make the salad.","o":["I will helping you make the salad.","I will to help you make the salad."]},{"t":"choose","he":"מה תעשה בחופשה?","a":"What will you do on vacation?","o":["What do you will do on vacation?","What will you doing on vacation?"]},{"t":"order","he":"הם הולכים לחגוג בפארק.","w":"They are going to celebrate in the park","d":"celebrated","alt":[],"p":"."},{"t":"order","he":"בעתיד אני אהיה מדען.","w":"In the future I will be a scientist","d":"was","alt":["I will be a scientist in the future"],"p":"."},{"t":"order","he":"המסיבה תתחיל בשש.","w":"The party will begin at six","d":"began","alt":[],"p":"."},{"t":"order","he":"אנחנו לא הולכים לאכול אורז.","w":"We aren't going to eat rice","d":"ate","alt":[],"p":"."},{"t":"order","he":"היא תביא מתנה.","w":"She will bring a gift","d":"brought","alt":[],"p":"."},{"t":"order","he":"המוזיאון יהיה פתוח מחר?","w":"Will the museum be open tomorrow","d":"Is","alt":[],"p":"?"}],"lk":[{"t":"fill","s":"I wore a jacket ___ it was cold.","he":"לבשתי מעיל כי היה קר.","a":"because","o":["so","but","or"]},{"t":"fill","s":"The soup was hot, ___ I waited.","he":"המרק היה חם, אז חיכיתי.","a":"so","o":["because","but","or"]},{"t":"fill","s":"I like rice, ___ I don't like eggs.","he":"אני אוהב אורז, אבל אני לא אוהב ביצים.","a":"but","o":["so","because","if"]},{"t":"fill","s":"Wash your hands ___ lunch.","he":"תשטוף ידיים לפני ארוחת הצהריים.","a":"before","o":["because","so","or"]},{"t":"choose","he":"אם ירד גשם, החתונה תהיה בפנים.","a":"If it rains, the wedding will be inside.","o":["But it rains, the wedding will be inside.","So it rains, the wedding will be inside."]},{"t":"choose","he":"אתה רוצה מיץ או מים?","a":"Do you want juice or water?","o":["Do you want juice but water?","Do you want juice because water?"]},{"t":"order","he":"הלכנו למוזיאון ואז אכלנו במסעדה.","w":"We went to the museum and then we ate at a restaurant","d":"because","alt":[],"p":"."},{"t":"order","he":"הוא שמח כי הוא קיבל ציון טוב.","w":"He was happy because he got a good grade","d":"so","alt":[],"p":"."},{"t":"order","he":"חיכינו בפינה עד שהאוטובוס הגיע.","w":"We waited at the corner until the bus came","d":"after","alt":[],"p":"."},{"t":"order","he":"אחרי ארוחת הערב שיחקנו משחק.","w":"After dinner we played a game","d":"before","alt":["We played a game after dinner"],"p":"."},{"t":"order","he":"אנחנו יוצאים כשהיא מוכנה.","w":"We leave when she is ready","d":"if","alt":["When she is ready we leave"],"p":"."},{"t":"order","he":"זה פשוט אבל זה חשוב.","w":"It is simple but it is important","d":"so","alt":[],"p":"."}]},"5":{"ps":[{"t":"fill","s":"Water ___ at zero degrees.","he":"מים קופאים באפס מעלות.","a":"freezes","o":["freeze","froze","freezing"]},{"t":"fill","s":"Plants ___ air and water.","he":"צמחים צריכים אוויר ומים.","a":"need","o":["needs","needed","needing"]},{"t":"fill","s":"Our coach ___ shout at us.","he":"המאמן שלנו לא צועק עלינו.","a":"doesn't","o":["don't","isn't","didn't"]},{"t":"fill","s":"___ the president live in the capital?","he":"הנשיא גר בעיר הבירה?","a":"Does","o":["Do","Is","Are"]},{"t":"choose","he":"הוא תמיד אומר את האמת.","a":"He always tells the truth.","o":["He always tell the truth.","He always telling the truth."]},{"t":"choose","he":"אתם מאכילים את הציפורים?","a":"Do you feed the birds?","o":["Does you feed the birds?","Do you feeds the birds?"]},{"t":"order","he":"המלכה גרה בבית גדול.","w":"The queen lives in a big house","d":"live","alt":[],"p":"."},{"t":"order","he":"אני חולם בכל לילה.","w":"I dream every night","d":"dreams","alt":[],"p":"."},{"t":"order","he":"העלים נופלים בסתיו.","w":"Leaves fall in autumn","d":"falls","alt":[],"p":"."},{"t":"order","he":"היא לא מספרת סודות.","w":"She doesn't tell secrets","d":"don't","alt":[],"p":"."},{"t":"order","he":"השחקנים מתעמלים כל בוקר.","w":"The players exercise every morning","d":"exercises","alt":[],"p":"."},{"t":"order","he":"איפה המאמן גר?","w":"Where does the coach live","d":"do","alt":[],"p":"?"}],"pc":[{"t":"fill","s":"Look! The dog ___ a hole in the sand.","he":"תראה! הכלב חופר בור בחול.","a":"is digging","o":["digs","are digging","dug"]},{"t":"fill","s":"The wind ___ the leaves now.","he":"הרוח מנערת עכשיו את העלים.","a":"is shaking","o":["shakes","are shaking","shook"]},{"t":"fill","s":"We ___ climbing the mountain.","he":"אנחנו מטפסים על ההר.","a":"are","o":["is","am","do"]},{"t":"fill","s":"She ___ not telling the truth.","he":"היא לא אומרת את האמת.","a":"is","o":["are","does","do"]},{"t":"choose","he":"הילדים מתנדנדים בפארק.","a":"The children are swinging in the park.","o":["The children swinging in the park.","The children is swinging in the park."]},{"t":"choose","he":"למה אתה קורע את הנייר?","a":"Why are you tearing the paper?","o":["Why do you tearing the paper?","Why you are tearing the paper?"]},{"t":"order","he":"החיילים הולכים לכיוון הגבול.","w":"The soldiers are walking toward the border","d":"walk","alt":[],"p":"."},{"t":"order","he":"אני מאכיל את הסוס.","w":"I am feeding the horse","d":"feed","alt":[],"p":"."},{"t":"order","he":"הספינה שוקעת!","w":"The ship is sinking","d":"sinks","alt":[],"p":"!"},{"t":"order","he":"המאמן לא צופה במשחק.","w":"The coach isn't watching the match","d":"doesn't","alt":[],"p":"."},{"t":"order","he":"היא קופצת מעל האבן.","w":"She is jumping over the stone","d":"jumps","alt":[],"p":"."},{"t":"order","he":"אתם מחפשים את הדגל?","w":"Are you looking for the flag","d":"Do","alt":[],"p":"?"}],"pa":[{"t":"fill","s":"The dog ___ my hand.","he":"הכלב נשך לי את היד.","a":"bit","o":["bite","bited","bites"]},{"t":"fill","s":"We ___ the race last week.","he":"ניצחנו במרוץ בשבוע שעבר.","a":"won","o":["win","winned","wins"]},{"t":"fill","s":"She ___ up early this morning.","he":"היא התעוררה מוקדם הבוקר.","a":"woke","o":["wake","waked","wakes"]},{"t":"fill","s":"Did the king ___ the war?","he":"המלך הפסיד במלחמה?","a":"lose","o":["lost","loses","losed"]},{"t":"choose","he":"הוא תלה את התמונה מעל המיטה.","a":"He hung the picture above the bed.","o":["He hang the picture above the bed.","He hunged the picture above the bed."]},{"t":"choose","he":"היא לא סלחה לו.","a":"She didn't forgive him.","o":["She didn't forgave him.","She not forgave him."]},{"t":"order","he":"הספינה שקעה בים.","w":"The ship sank in the sea","d":"sink","alt":[],"p":"."},{"t":"order","he":"המאמן הוביל את הקבוצה.","w":"The coach led the team","d":"lead","alt":[],"p":"."},{"t":"order","he":"הם נלחמו על המדינה שלהם.","w":"They fought for their country","d":"fight","alt":[],"p":"."},{"t":"order","he":"היא קרעה את המכתב.","w":"She tore the letter","d":"tear","alt":[],"p":"."},{"t":"order","he":"לפני שנתיים ביקרנו בעיר הבירה.","w":"Two years ago we visited the capital","d":"visit","alt":["We visited the capital two years ago"],"p":"."},{"t":"order","he":"מי בעט בכדור?","w":"Who kicked the ball","d":"kicks","alt":[],"p":"?"}],"im":[{"t":"fill","s":"___ the plants every morning.","he":"תשקה את הצמחים כל בוקר.","a":"Water","o":["Waters","Watered","Watering"]},{"t":"fill","s":"___ climb on the wall!","he":"אל תטפס על הקיר!","a":"Don't","o":["Doesn't","Not","No"]},{"t":"fill","s":"___ jump into the water!","he":"בוא נקפוץ למים!","a":"Let's","o":["Lets","Let","We"]},{"t":"fill","s":"Please ___ me, I'm sorry.","he":"בבקשה תסלח לי, אני מצטער.","a":"forgive","o":["forgives","forgave","forgiving"]},{"t":"choose","he":"אל תספר לאף אחד את הסוד שלי.","a":"Don't tell anyone my secret.","o":["Not tell anyone my secret.","Doesn't tell anyone my secret."]},{"t":"choose","he":"תהיה נחמד לאח שלך.","a":"Be kind to your brother.","o":["Are kind to your brother.","Being kind to your brother."]},{"t":"order","he":"תכופף את הברכיים.","w":"Bend your knees","d":"bent","alt":[],"p":"."},{"t":"order","he":"תנער את הבקבוק.","w":"Shake the bottle","d":"shook","alt":[],"p":"."},{"t":"order","he":"בוא נשחה לאי.","w":"Let's swim to the island","d":"swam","alt":[],"p":"."},{"t":"order","he":"אל תאכיל את בעלי החיים.","w":"Don't feed the animals","d":"fed","alt":[],"p":"."},{"t":"order","he":"תסתכל מתחת לשולחן.","w":"Look under the table","d":"looks","alt":[],"p":"."},{"t":"order","he":"בבקשה תעיר אותי בשבע.","w":"Please wake me up at seven","d":"woke","alt":[],"p":"."}],"fu":[{"t":"fill","s":"I think our team ___ win the match.","he":"אני חושב שהקבוצה שלנו תנצח במשחק.","a":"will","o":["is","does","did"]},{"t":"fill","s":"Look at the dark clouds! It's ___ to rain.","he":"תראה את העננים החשוכים! עומד לרדת גשם.","a":"going","o":["go","will","went"]},{"t":"fill","s":"The water ___ freeze tonight.","he":"המים יקפאו הלילה.","a":"will","o":["is","does","was"]},{"t":"fill","s":"She won't ___ the truth.","he":"היא לא תגיד את האמת.","a":"tell","o":["told","tells","telling"]},{"t":"choose","he":"אני אחפור בור בחול.","a":"I will dig a hole in the sand.","o":["I will digging a hole in the sand.","I will to dig a hole in the sand."]},{"t":"choose","he":"מי יוביל את הקבוצה?","a":"Who will lead the team?","o":["Who will leads the team?","Who does will lead the team?"]},{"t":"order","he":"הם הולכים לשתול פרחים.","w":"They are going to plant flowers","d":"planted","alt":[],"p":"."},{"t":"order","he":"בשנה הבאה אשחה בתחרות.","w":"Next year I will swim in the competition","d":"swam","alt":["I will swim in the competition next year"],"p":"."},{"t":"order","he":"המלך לא יסלח לו.","w":"The king won't forgive him","d":"forgave","alt":[],"p":"."},{"t":"order","he":"בקיץ נטפס על ההר.","w":"In the summer we will climb the mountain","d":"climbed","alt":["We will climb the mountain in the summer"],"p":"."},{"t":"order","he":"האוויר יהיה קר בלילה.","w":"The air will be cold at night","d":"was","alt":[],"p":"."},{"t":"order","he":"תתלה את הדגל?","w":"Will you hang the flag","d":"hung","alt":[],"p":"?"}],"lk":[{"t":"fill","s":"___ it was cold, we swam in the sea.","he":"למרות שהיה קר, שחינו בים.","a":"Although","o":["Because","So","Unless"]},{"t":"fill","s":"We won't go ___ it stops raining.","he":"לא נלך אלא אם כן יפסיק לרדת גשם.","a":"unless","o":["because","so","although"]},{"t":"fill","s":"I read a book ___ I waited.","he":"קראתי ספר בזמן שחיכיתי.","a":"while","o":["unless","although","whose"]},{"t":"fill","s":"I don't know ___ he is coming.","he":"אני לא יודע אם הוא בא.","a":"whether","o":["whose","while","unless"]},{"t":"choose","he":"במקום לשחק, הוא למד.","a":"Instead of playing, he studied.","o":["Although of playing, he studied.","Unless of playing, he studied."]},{"t":"choose","he":"של מי הכדור הזה?","a":"Whose ball is this?","o":["Who ball is this?","Whose is ball this?"]},{"t":"order","he":"הוא עייף, אבל ישחק בכל מקרה.","w":"He is tired but he will play anyway","d":"unless","alt":[],"p":"."},{"t":"order","he":"אולי נבקר בעיר הבירה.","w":"Perhaps we will visit the capital","d":"whose","alt":[],"p":"."},{"t":"order","he":"נשארנו בפנים מכיוון שהיה קר.","w":"We stayed inside since it was cold","d":"although","alt":[],"p":"."},{"t":"order","he":"הוא אמר את האמת למרות שהוא פחד.","w":"He told the truth although he was afraid","d":"because","alt":[],"p":"."},{"t":"order","he":"תאכל מה שאתה רוצה.","w":"Eat whatever you want","d":"whose","alt":[],"p":"."},{"t":"order","he":"אתה יכול לבחור או כחול או אדום.","w":"You can choose either blue or red","d":"neither","alt":[],"p":"."}]}};
+// TENSES[lv-1][n]: unit n of word level lv. Level 1 keeps its original sentences and ids ("ps:3"); others are "L2ps:3".
+const TENSES = LEVELS.map((l, k) => GRAMMAR.map(u => k===0 ? Object.assign(u, {lv:1})
+  : Object.assign({}, u, {lv:k+1, items:((LEVEL_TENSES[k+1]||{})[u.id]||[]).map((it, i) => Object.assign(it, {id:"L"+(k+1)+u.id+":"+i}))})));
+const tensesOf = lv => TENSES[lv-1];
 const gsc = it => S.gscore[it.id] || 0;
 const gknown = u => u.items.filter(it => gsc(it) >= MASTER).length;
 const gtried = u => u.items.filter(it => gsc(it) >= 1).length;               // answered right at least once
 const gpoints = u => u.items.reduce((t, it) => t + gsc(it), 0) / (u.items.length * MASTER); // 0..1, grows with every right answer
-// Unit n+1 opens with the words: at UNLOCK known words in word level n.
-// S.gunlocked[unit id]: true = opened (by a parent, or kept open once reached), false = closed by a parent, unset = automatic.
-const unitReady = n => known(LEVEL_WORDS[Math.min(n, LEVEL_WORDS.length)-1]) >= UNLOCK;
-function gOpen(n){ return n===0 || (S.gunlocked[GRAMMAR[n].id] ?? unitReady(n)); }
-function keepOpenUnits(){
-  for(let n=1; n<GRAMMAR.length; n++)
-    if(S.gunlocked[GRAMMAR[n].id]===undefined && unitReady(n)) S.gunlocked[GRAMMAR[n].id] = true;
+const lvItems = lv => tensesOf(lv).flatMap(u => u.items);
+
+/* ---------- level test ---------- */
+// Each word level ends with a test: TEST_N words from the whole level, choosing and typing mixed.
+// Passing it (TEST_PASS right) opens that level's tenses. It never blocks the next level.
+const TEST_N = 20, TEST_PASS = 16;
+const testOf = lv => S.ltest[lv] || null;
+const passedTest = lv => (testOf(lv)?.best || 0) >= TEST_PASS;
+// S.gunlocked["L"+lv]: true = opened by a parent (or kept from before), false = closed by a parent, unset = opens with the test.
+const tensesOpen = lv => S.gunlocked["L"+lv] ?? passedTest(lv);
+function migrateTenses(){
+  // Tenses used to open by known words; anyone who already practiced level-1 sentences keeps them open.
+  if(S.gbylevel) return;
+  const had = Object.keys(S.gscore).some(k => /^(ps|pc|pa|im|fu|lk):/.test(k) && S.gscore[k] > 0);
+  S.gunlocked = had ? {L1:true} : {};
+  S.gbylevel = true; delete S.gbywords;
 }
-// Units were first keyed by position, in this order.
-const OLD_UNIT_ORDER = ["ps","pc","im","pa"];
-function migrateUnitKeys(){
-  // Units used to unlock by sentence progress; those unlock/close marks no longer apply.
-  if(!S.gbywords){ S.gunlocked = {}; S.gbywords = true; }
-  for(const k of Object.keys(S.gunlocked)) if(/^\d+$/.test(k)){
-    const id = OLD_UNIT_ORDER[k];
-    if(id && S.gunlocked[id]===undefined) S.gunlocked[id] = S.gunlocked[k];
-    delete S.gunlocked[k];
-  }
+function startTest(){
+  go({name:"play", mode:"test", lv:S.level, items:shuffle(ALL).slice(0, TEST_N), i:0, right:0, missed:[], pool:ALL, back:null});
 }
-// The unit to suggest: the first open one that isn't fully learned yet.
-function topUnit(){ const n = GRAMMAR.findIndex((u,i)=>gOpen(i) && gknown(u) < u.items.length); return n < 0 ? GRAMMAR.length-1 : n; }
+function finishTest(v){
+  const t = S.ltest[v.lv] || {best:0, tries:0}, wasOpen = tensesOpen(v.lv);
+  t.tries++; t.last = v.right; t.date = today();
+  if(v.right >= t.best) t.best = v.right;
+  S.ltest[v.lv] = t; save();
+  go({name:"result", mode:"test", lv:v.lv, right:v.right, total:v.items.length, missed:v.missed, opened:!wasOpen && tensesOpen(v.lv), back:null});
+}
+function testResult(){
+  const v=view, pass = v.right >= TEST_PASS, t = testOf(v.lv);
+  const msg = pass ? (v.opened ? `🎉 עברת את מבחן שלב ${v.lv}! הזמנים של השלב נפתחו.` : `עברת את מבחן שלב ${v.lv}!`)
+    : `כדי לעבור צריך ${TEST_PASS} תשובות נכונות מתוך ${v.total}. עוד קצת תרגול ונסה שוב, אפשר כמה פעמים שרוצים.`;
+  app.innerHTML = `
+  <div class="result">
+    ${resultTop(v.right, v.total)}
+    <p>${msg}</p>
+    <p class="note">הציון הכי טוב שלך: ${t ? t.best : v.right}/${v.total}</p>
+    ${v.missed.length?`<h2>מילים לחזרה</h2><div class="chips">${v.missed.map(x=>`<span class="chip"><span class="en">${esc(x.en)}</span> · ${esc(x.he)}</span>`).join("")}</div>`:""}
+    ${tensesOpen(v.lv) ? `<button class="btn go wide" data-a="tenses">⏳ לזמנים</button>` : `<button class="btn go wide" data-a="retry">לנסות שוב</button>`}
+    <button class="ghost" style="width:100%;margin-top:10px" data-a="home">למסך הבית</button>
+  </div>`;
+  const tn = app.querySelector('[data-a="tenses"]'); if(tn) tn.onclick=()=>go({name:"grammar", lv:v.lv});
+  const rt = app.querySelector('[data-a="retry"]'); if(rt) rt.onclick=startTest;
+  app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
+  if(pass) celebrateResult(v.right, v.total);
+}
+function testTile(){
+  const t = testOf(S.level), pass = passedTest(S.level);
+  return `<button class="week test ${pass?'done':''}" data-a="ltest"><span class="num ic">🏁</span><span class="t"><b>מבחן שלב ${S.level}</b><span>${t ? `הציון הכי טוב: ${t.best}/${TEST_N}${pass ? " ✓ עברת" : ` · עוברים ב-${TEST_PASS}`}` : `${TEST_N} מילים מכל השלב · עוברים ב-${TEST_PASS} נכונות`}</span></span></button>`;
+}
+function tensesTile(){
+  const lv = S.level, o = tensesOpen(lv), all = lvItems(lv), k = all.filter(it => gsc(it) >= MASTER).length;
+  const p = Math.round(all.reduce((t, it) => t + gsc(it), 0) / (all.length * MASTER) * 100);
+  return `<button class="week sent ${o && k===all.length?'done':''}" data-a="tenses" ${o?'':'disabled'}>
+    <span class="num ic">${o ? "⏳" : "🔒"}</span>
+    <span class="t"><b>זמנים · שלב ${lv}</b><span>${o ? `6 זמנים במשפטים עם מילים מהשלב · נתפסו ${k}/${all.length}` : "ייפתח אחרי שתעבור את מבחן השלב"}</span>${o ? `<span class="mini"><i style="width:${p}%"></i></span>` : ""}</span>
+  </button>`;
+}
+
 const gstats = u => `נכון לפחות פעם אחת: ${gtried(u)}/${u.items.length} · נתפסו: ${gknown(u)}`;
 function gbump(it, ok){
   S.gscore[it.id] = ok ? Math.min(MASTER, gsc(it)+1) : 0;
@@ -1095,40 +1154,37 @@ function gbump(it, ok){
   if(!S.days.includes(d)) S.days.push(d);
   save();
 }
-function gRound(n){
-  const items = pickBy(GRAMMAR[n].items, gsc);
-  // Bring back sentences from earlier units: not known first, then least recently practiced.
+function gRound(lv, n){
+  const units = tensesOf(lv), items = pickBy(units[n].items, gsc);
+  // Bring back sentences from this level's earlier tenses: not known first, then least recently practiced.
   const rank = it => gsc(it) >= MASTER ? 1 : 0;
-  const old = shuffle(GRAMMAR.slice(0, n).flatMap(u=>u.items))
+  const old = shuffle(units.slice(0, n).flatMap(u=>u.items))
     .sort((a,b)=> rank(a)-rank(b) || (S.gseen[a.id]||"").localeCompare(S.gseen[b.id]||"")).slice(0, OLD_PER_ROUND);
   return shuffle([...items, ...old]);
 }
 const gText = it => it.t==="order" ? it.w + it.p : it.t==="fill" ? it.s.replace("___", it.a) : it.a;
 const tileText = (t, i) => i===0 && t!=="I" && !t.startsWith("I'") ? t.charAt(0).toLowerCase() + t.slice(1) : t;
-const unitOf = it => GRAMMAR.find(u => u.items.includes(it));
-
-function grammarCard(){
-  const n = topUnit(), u = GRAMMAR[n];
-  return `<button class="mode gram" data-a="grammar"><b>✍️ משפטים וזמנים</b><span>יחידה ${n+1}: ${u.name} · ${gstats(u)}</span></button>`;
-}
+const unitOf = it => TENSES.flat().find(u => u.items.includes(it));
 
 function grammarScreen(){
+  const lv = view.lv;
+  if(!tensesOpen(lv)) return go({name:"home"});
   app.innerHTML = `
-  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">משפטים וזמנים</span></div>
-  <p class="note">כל יחידה מלמדת זמן אחד. יחידה חדשה נפתחת כשיודעים ${UNLOCK} מילים בשלב המילים המתאים. משפט "נתפס" אחרי 3 תשובות נכונות.</p>
-  <div class="weeks">${GRAMMAR.map((u,n)=>{ const o=gOpen(n), k=gknown(u), p=Math.round(gpoints(u)*100);
-    return `<button class="week ${k===u.items.length?'done':''}" data-g="${n}" ${o?'':'disabled'}>
-      <span class="num ic">${o ? (UNIT_ICONS[u.id]||"✍️") + `<small>${n+1}</small>` : '🔒'}</span>
-      <span class="t"><b>${u.name} · <span class="en">${esc(u.short)}</span></b><span>${o ? gstats(u) : `נפתחת כשתדע ${UNLOCK} מילים בשלב ${Math.min(n, LEVEL_WORDS.length)} (עכשיו: ${known(LEVEL_WORDS[Math.min(n, LEVEL_WORDS.length)-1])})`}</span><span class="mini"><i style="width:${p}%"></i></span></span>
+  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">⏳ זמנים · שלב ${lv}</span></div>
+  <p class="note">כל זמן עם משפטים מהמילים של שלב ${lv}. משפט "נתפס" אחרי 3 תשובות נכונות.</p>
+  <div class="weeks">${tensesOf(lv).map((u,n)=>{ const k=gknown(u), p=Math.round(gpoints(u)*100);
+    return `<button class="week ${k===u.items.length?'done':''}" data-g="${n}">
+      <span class="num ic">${UNIT_ICONS[u.id]||"✍️"}<small>${n+1}</small></span>
+      <span class="t"><b>${u.name} · <span class="en">${esc(u.short)}</span></b><span>${gstats(u)}</span><span class="mini"><i style="width:${p}%"></i></span></span>
     </button>`; }).join("")}</div>`;
   app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
-  app.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>go({name:"gunit", n:+b.dataset.g}));
+  app.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>go({name:"gunit", lv, n:+b.dataset.g}));
 }
 
 function gunitScreen(){
-  const n=view.n, u=GRAMMAR[n];
+  const lv=view.lv, n=view.n, u=tensesOf(lv)[n];
   app.innerHTML = `
-  <div class="top"><button class="back" data-a="grammar">חזרה</button><span class="title">יחידה ${n+1}: ${u.name}</span></div>
+  <div class="top"><button class="back" data-a="grammar">חזרה</button><span class="title">⏳ ${u.name} · שלב ${lv}</span></div>
   <div class="rule">
     <p>${esc(u.rule)}</p>
     <ul>${u.form.map(([label, ex])=>`<li>${esc(label)}: <span class="en">${esc(ex)}</span></li>`).join("")}</ul>
@@ -1139,14 +1195,14 @@ function gunitScreen(){
   <button class="btn go wide" data-a="gpractice">תרגול</button>
   <div class="bar gbar"><i style="width:${Math.round(gpoints(u)*100)}%"></i></div>
   <p class="note">${gstats(u)} מתוך ${u.items.length}. כל תשובה נכונה מקדמת את הפס; משפט נתפס אחרי 3 תשובות נכונות, ותשובה שגויה מאפסת אותו.</p>`;
-  app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"grammar"});
+  app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"grammar", lv});
   app.querySelectorAll("[data-say]").forEach(b=>b.onclick=()=>speak(u.ex[+b.dataset.say][0]));
-  app.querySelector('[data-a="gpractice"]').onclick=()=>go({name:"gplay", n, items:gRound(n), i:0, right:0, missed:[]});
+  app.querySelector('[data-a="gpractice"]').onclick=()=>go({name:"gplay", lv, n, items:gRound(lv, n), i:0, right:0, missed:[]});
 }
 
 function gplay(){
   const v=view, it=v.items[v.i];
-  if(!it) return go({name:"gresult", n:v.n, right:v.right, total:v.items.length, missed:v.missed});
+  if(!it) return go({name:"gresult", lv:v.lv, n:v.n, right:v.right, total:v.items.length, missed:v.missed});
   const u = unitOf(it);
   const head = `<div class="top"><button class="back" data-a="quit">יציאה</button><span class="title">${u.name}</span></div>
   <div class="progress">${v.i+1} מתוך ${v.items.length}</div>`;
@@ -1168,7 +1224,7 @@ function gplay(){
       <button class="btn go wide" data-a="check" ${v.built.length?'':'disabled'}>בדיקה</button>`;
   }
   app.innerHTML = head + body + `<div class="feedback" id="fb"></div>`;
-  app.querySelector('[data-a="quit"]').onclick=()=>go({name:"gunit", n:v.n});
+  app.querySelector('[data-a="quit"]').onclick=()=>go({name:"gunit", lv:v.lv, n:v.n});
 
   const finish = ok => {
     const was = gsc(it);
@@ -1207,15 +1263,15 @@ function gresult(){
     ${resultTop(v.right, v.total)}
     <p>${v.right===v.total ? "🏆 מושלם! כל המשפטים נכונים." : v.right/v.total>=.7 ? "יפה מאוד! עוד קצת תרגול וזה שלך." : "התחלה טובה. כדאי לקרוא שוב את ההסבר ולתרגל עוד סבב."}</p>
     ${v.missed.length?`<h2>משפטים לחזרה</h2><div class="wordlist">${v.missed.map(it=>`<div class="wl ex"><span class="en">${esc(gText(it))}</span><span>${esc(it.he)}</span></div>`).join("")}</div>`:""}
-    <p class="note">${gstats(GRAMMAR[v.n])}</p>
-    <button class="btn go wide" data-a="again">חזרה ליחידה</button>
+    <p class="note">${gstats(tensesOf(v.lv)[v.n])}</p>
+    <button class="btn go wide" data-a="again">חזרה לזמן</button>
   </div>`;
-  app.querySelector('[data-a="again"]').onclick=()=>go({name:"gunit", n:v.n});
+  app.querySelector('[data-a="again"]').onclick=()=>go({name:"gunit", lv:v.lv, n:v.n});
   celebrateResult(v.right, v.total);
 }
 
 /* ---------- dictations: photographed or typed word lists ---------- */
-const DICT_MAX = 60;
+const DICT_MAX = 50;
 const dictById = id => (S.dict || []).find(d => d.id === id);
 const dictWords = d => d.words.map(([en, he]) => ({en, he, week:"d:" + d.id}));
 const defaultDictName = () => { const t = new Date(); return `הכתבה ${t.getDate()}/${t.getMonth()+1}`; };
@@ -1224,7 +1280,7 @@ function dictCard(){
   return `<button class="mode dict" data-a="dicts"><b>📷 הכתבות</b><span>${n ? `${n} הכתבות שמורות · אפשר להוסיף חדשה` : "מצלמים רשימת מילים מבית הספר ומתרגלים אותה"}</span></button>`;
 }
 // Photos are shrunk on the phone before upload: enough detail for OCR, a fraction of the size.
-function shrinkImage(file, max = 1600){
+function shrinkImage(file, max = 2200){
   return new Promise((resolve, reject) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
@@ -1233,7 +1289,7 @@ function shrinkImage(file, max = 1600){
       c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
-      resolve(c.toDataURL("image/jpeg", .85).split(",")[1]);
+      resolve(c.toDataURL("image/jpeg", .9).split(",")[1]);
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad image")); };
     img.src = url;
@@ -1274,7 +1330,7 @@ function dictsScreen(){
       if(!j.ok) throw new Error(j.error);
       if(!j.words.length) return go({name:"dicts", err:"לא מצאתי מילים באנגלית בתמונה. נסו לצלם מקרוב ובאור טוב, או הקלידו את המילים."});
       SFX.ok();
-      go({name:"dictedit", title:defaultDictName(), rows:j.words.slice(0, DICT_MAX)});
+      go({name:"dictedit", title:defaultDictName(), rows:j.words.slice(0, DICT_MAX), raw:j.text || ""});
     }catch(err){
       go({name:"dicts", err: err.message==="ocr failed" || err.message==="bad image" ? "לא הצלחתי לקרוא את התמונה. נסו שוב, או הקלידו את המילים." : errText(err)});
     }
@@ -1287,19 +1343,23 @@ function dictEditScreen(){
   app.innerHTML = `
   <div class="top"><button class="back" data-a="back">ביטול</button><span class="title">${v.id ? "עריכת הכתבה" : "הכתבה חדשה"}</span></div>
   <div class="form"><label>שם ההכתבה<input class="field" id="dn" maxlength="40" value="${esc(v.title || "")}"></label></div>
-  <p class="note">בדקו שכל מילה נכונה, מחקו מה שלא שייך, והוסיפו מה שחסר.${v.rows.some(r=>r[2]) ? " תרגום שמסומן ב-🌐 נעשה אוטומטית, כדאי לבדוק אותו." : ""}</p>
+  <p class="note">בדקו שכל מילה נכונה, מחקו מה שלא שייך, והוסיפו מה שחסר (עד ${DICT_MAX} מילים). גוללים למטה כדי לעבור על כל הרשימה.${v.rows.some(r=>r[2]) ? " תרגום שמסומן ב-🌐 נעשה אוטומטית, כדאי לבדוק אותו." : ""}</p>
+  ${v.raw ? `<details class="note raw"><summary>הטקסט שגוגל קרא מהתמונה</summary><pre>${esc(v.raw)}</pre></details>` : ""}
   <div class="editrows">${v.rows.map((r,i)=>`<div class="er">
     <input class="field en" data-en="${i}" value="${esc(r[0])}" placeholder="English" autocomplete="off" autocapitalize="off" spellcheck="false">
     <input class="field" data-he="${i}" value="${esc(r[1])}" placeholder="תרגום">
     ${r[2] ? `<span class="auto" title="תרגום אוטומטי">🌐</span>` : `<span class="auto"></span>`}
     <button class="mk" data-rm="${i}" aria-label="מחיקת שורה">✕</button></div>`).join("")}</div>
-  <button class="btn no wide" data-a="add">➕ הוספת מילה</button>
+  <button class="btn no wide" data-a="add" ${v.rows.length >= DICT_MAX ? "disabled" : ""}>➕ הוספת מילה</button>
   <button class="btn no wide" data-a="tr">🌐 תרגום אוטומטי למילים בלי תרגום</button>
-  <button class="btn go wide" data-a="save">💾 שמירה ותרגול</button>
-  <div class="feedback bad" id="fb"></div>`;
+  <div class="savebar">
+    <div class="feedback bad" id="fb"></div>
+    <button class="btn go wide" data-a="save">💾 שמירה ותרגול · <span id="cnt">${v.rows.filter(r=>r[0].trim()).length}</span> מילים</button>
+  </div>`;
   const fb = document.getElementById("fb");
   document.getElementById("dn").oninput = e => { v.title = e.target.value; };
-  app.querySelectorAll("[data-en]").forEach(el=>el.oninput=()=>{ v.rows[+el.dataset.en][0] = el.value; });
+  const count = () => { document.getElementById("cnt").textContent = v.rows.filter(r=>r[0].trim()).length; };
+  app.querySelectorAll("[data-en]").forEach(el=>el.oninput=()=>{ v.rows[+el.dataset.en][0] = el.value; count(); });
   app.querySelectorAll("[data-he]").forEach(el=>el.oninput=()=>{ const r = v.rows[+el.dataset.he]; r[1] = el.value; r[2] = false; });
   app.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ v.rows.splice(+b.dataset.rm, 1); render(); });
   app.querySelector('[data-a="add"]').onclick=()=>{
@@ -1331,6 +1391,7 @@ function dictEditScreen(){
       words.push([en, he]);
     }
     if(words.length < 2){ fb.textContent = "צריך לפחות 2 מילים."; return; }
+    if(words.length > DICT_MAX){ fb.textContent = `אפשר עד ${DICT_MAX} מילים בהכתבה אחת. מחקו ${words.length - DICT_MAX} מילים.`; return; }
     const name = (v.title || "").trim() || defaultDictName();
     let id = v.id;
     if(id){ const d = dictById(id); d.name = name; d.words = words; }
@@ -1526,11 +1587,12 @@ function parent(){
   </div>
   <p class="note">${S.level>1 ? (S.lastReview ? `חזרה אחרונה על שלבים קודמים: ${S.lastReview.split("-").reverse().join("/")}. ` : "עוד לא נעשתה חזרה על שלבים קודמים. ") : ""}"נשכחו" = מילים שכבר ידע, טעה בהן, ועוד לא למד מחדש.</p>
   <p class="note">שלב חדש נפתח כשיודעים ${UNLOCK} מילים מהשלב הקודם. אפשר גם לפתוח או לסגור שלב ידנית. שלב שנסגר ייפתח שוב לבד כשיגיע ל-${UNLOCK} מילים בשלב הקודם (אם כבר עבר את זה, הוא יישאר סגור עד שתפתח אותו).</p>
-  <h2>משפטים וזמנים</h2>
+  <h2>מבחני שלב וזמנים</h2>
   <div class="wordlist">
-    ${GRAMMAR.map((u,n)=>{ const o=gOpen(n);
-      return `<div class="wl"><span>${n+1}. ${u.name}${o?'':' 🔒'}</span><b>${gknown(u)} / ${u.items.length}</b>${n===0?'':o?`<button class="mk" data-gc="${n}">סגור</button>`:`<button class="mk" data-go="${n}">פתח</button>`}</div>`; }).join("")}
+    ${LEVELS.map(l=>{ const t=testOf(l.n), o=tensesOpen(l.n), all=lvItems(l.n), k=all.filter(it=>gsc(it)>=MASTER).length;
+      return `<div class="wl"><span>שלב ${l.n}: מבחן ${t ? `${t.best}/${TEST_N}${passedTest(l.n) ? " ✓" : ""}` : "—"} · זמנים${o?'':' 🔒'}</span><b>${k} / ${all.length}</b>${o?`<button class="mk" data-gc="${l.n}">סגור</button>`:`<button class="mk" data-go="${l.n}">פתח</button>`}</div>`; }).join("")}
   </div>
+  <p class="note">הזמנים של כל שלב נפתחים אחרי שעוברים את מבחן השלב (${TEST_PASS} מתוך ${TEST_N}). המבחן לא עוצר מעבר לשלב הבא. אפשר גם לפתוח או לסגור ידנית.</p>
   <h2>מילים שהכי קשות לו</h2>
   ${hard.length?`<div class="wordlist">${hard.map(x=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="note" style="margin:0">${x.n} טעויות</span></div>`).join("")}</div>
   <p class="note">את המילים האלה כדאי לשלב השבוע ב"מילה של היום" ובשיחה.</p>`:`<p class="note">עוד אין טעויות רשומות.</p>`}
@@ -1552,14 +1614,14 @@ function parent(){
     ].join("<br>");
   };
   app.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.u; if(confirm(`לפתוח את שלב ${n} עכשיו?`)){ S.unlocked[n]=true; save(); render(); } });
-  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.go; if(confirm(`לפתוח את יחידה ${n+1} עכשיו?`)){ S.gunlocked[GRAMMAR[n].id]=true; save(); render(); } });
+  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{ const lv=+b.dataset.go; if(confirm(`לפתוח את הזמנים של שלב ${lv} עכשיו?`)){ S.gunlocked["L"+lv]=true; save(); render(); } });
   app.querySelectorAll("[data-gc]").forEach(b=>b.onclick=()=>{
-    const n=+b.dataset.gc, u=GRAMMAR[n];
-    if(!confirm(`לסגור את יחידה ${n+1}?`)) return;
-    if(confirm(`למחוק גם את ההתקדמות ביחידה ${n+1}? כדאי אם רק בדקת אותה.`))
-      u.items.forEach(it=>{ delete S.gscore[it.id]; delete S.gwrong[it.id]; delete S.gseen[it.id]; });
-    delete S.gunlocked[u.id];
-    if(gOpen(n)) S.gunlocked[u.id]=false;
+    const lv=+b.dataset.gc;
+    if(!confirm(`לסגור את הזמנים של שלב ${lv}?`)) return;
+    if(confirm(`למחוק גם את ההתקדמות בזמנים של שלב ${lv}? כדאי אם רק בדקת אותם.`))
+      lvItems(lv).forEach(it=>{ delete S.gscore[it.id]; delete S.gwrong[it.id]; delete S.gseen[it.id]; });
+    delete S.gunlocked["L"+lv];
+    if(tensesOpen(lv)) S.gunlocked["L"+lv]=false;
     save(); render();
   });
   app.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{
