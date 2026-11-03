@@ -134,7 +134,21 @@ input.type.good,.built.good{border-color:var(--field-2);background:var(--good-bg
   #cheer{transition:none}
 }
 .who{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;font-weight:600}
-.ghost.sm{padding:4px 10px;font-size:14px}
+.ghost.sm{padding:4px 9px;font-size:14px;white-space:nowrap}
+.who .hi{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who .tools{display:flex;gap:6px;flex-shrink:0}
+.links.three{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.links.three .ghost{padding:8px 4px;white-space:nowrap}
+.dlg-wrap{position:fixed;inset:0;z-index:50;background:rgba(10,20,40,.45);display:flex;align-items:center;justify-content:center;padding:20px;animation:dlgIn .15s ease-out}
+.dlg{background:var(--paper);color:var(--ink);border-radius:20px;padding:22px 20px 18px;width:100%;max-width:360px;box-shadow:0 12px 40px rgba(0,0,0,.25);text-align:center}
+.dlg .dlg-buddy{margin:-4px auto 6px;width:56px}
+.dlg p{margin:0 0 6px;font-size:17px;font-weight:700;line-height:1.5}
+.dlg small{display:block;color:var(--muted);font-size:14px;margin-bottom:4px}
+.dlg-in{width:100%;margin-top:10px;padding:12px;font-size:17px;border:2px solid var(--line);border-radius:12px;background:var(--chalk);color:var(--ink);text-align:center}
+.dlg .row{margin-top:16px}
+.dlg .btn{padding:12px}
+.dlg .btn.danger{background:var(--coral);color:#fff}
+@keyframes dlgIn{from{opacity:0}to{opacity:1}}
 .board .sub{margin:6px 0 0;opacity:.95}
 .form{display:grid;gap:10px}
 .form label{display:grid;gap:4px;font-size:15px;color:var(--muted)}
@@ -665,6 +679,34 @@ function homeTip(k){
 }
 const lastShown = {}; // per user: the word count shown last time, to celebrate growth
 
+/* ---------- in-app dialogs (the browser's confirm/prompt show the site address) ---------- */
+// ask(text, {sub, ok, cancel, danger}) -> true/false. askText(text, value) -> string or null. tell(text) -> after OK.
+function dialog({text, sub="", ok="אישור", cancel="ביטול", input=null, danger=false}){
+  return new Promise(res=>{
+    const w = document.createElement("div"); w.className = "dlg-wrap";
+    w.innerHTML = `<div class="dlg" role="dialog" aria-modal="true">
+      <div class="dlg-buddy">${mascot("", 56)}</div>
+      <p>${esc(text)}</p>${sub ? `<small>${esc(sub)}</small>` : ""}
+      ${input!==null ? `<input class="dlg-in" maxlength="60" value="${esc(input)}">` : ""}
+      <div class="row" ${cancel ? "" : 'style="grid-template-columns:1fr"'}><button class="btn ${danger ? "danger" : "go"}" data-r="ok">${esc(ok)}</button>${cancel ? `<button class="btn no" data-r="no">${esc(cancel)}</button>` : ""}</div>
+    </div>`;
+    document.body.appendChild(w);
+    const inp = w.querySelector(".dlg-in");
+    const done = v => { w.remove(); document.removeEventListener("keydown", key); res(v); };
+    const no = () => done(inp ? null : false);
+    const key = e => { if(e.key==="Escape") no(); if(e.key==="Enter" && (inp || !cancel)) done(inp ? inp.value : true); };
+    document.addEventListener("keydown", key);
+    w.querySelector('[data-r="ok"]').onclick = () => done(inp ? inp.value : true);
+    const c = w.querySelector('[data-r="no"]'); if(c) c.onclick = no;
+    w.onclick = e => { if(e.target===w) no(); };
+    if(inp){ inp.focus(); inp.select(); } else w.querySelector('[data-r="ok"]').focus();
+  });
+}
+const ask = (text, o={}) => dialog({text, ...o});
+const askText = (text, value, o={}) => dialog({text, input:value, ...o});
+const tell = (text, o={}) => dialog({text, cancel:null, ...o});
+const copyBox = (text, link) => dialog({text, input:link, ok:"סגירה", cancel:null});
+
 /* ---------- screens ---------- */
 let view = {name:"home"};
 function go(v){ view = v; render(); window.scrollTo(0,0); }
@@ -695,7 +737,7 @@ function home(){
   const key = USER + ":" + S.level, grew = lastShown[key] !== undefined && k > lastShown[key];
   lastShown[key] = k;
   app.innerHTML = `
-  <div class="who"><span>שלום ${esc(USERNAME)} 👋</span><span><button class="ghost sm" data-a="dicts">📷 הכתבות</button> <button class="ghost sm" data-a="sound" aria-label="צלילים">${soundOn() ? "🔊" : "🔇"}</button> <button class="ghost sm" data-a="users">החלפת משתמש</button></span></div>
+  <div class="who"><span class="hi">שלום ${esc(USERNAME)} 👋</span><span class="tools"><button class="ghost sm" data-a="dicts">📷 הכתבות</button><button class="ghost sm" data-a="sound" aria-label="צלילים">${soundOn() ? "🔊" : "🔇"}</button><button class="ghost sm" data-a="users">👤 החלפה</button></span></div>
   <section class="board">
     <h1>${LEVEL_ICONS[S.level-1]} 100 מילים באנגלית · שלב ${S.level}</h1>
     <div class="big"><span class="n ${grew ? "grow" : ""}">${k}</span><span class="of">מתוך 100 מילים שאתה יודע</span></div>
@@ -757,24 +799,24 @@ function weekScreen(){
   </div>
   ${d || w!==8 ? `<div class="wordlist">${list.map((x,k)=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="dots">${[0,1,2].map(i=>`<i class="${sc(x.en)>i?'on':''}"></i>`).join("")}</span><button class="mk ${sc(x.en)>=MASTER?'on':''}" data-k="${k}" aria-pressed="${sc(x.en)>=MASTER}">${sc(x.en)>=MASTER?'✓ יודע':'יודע'}</button></div>`).join("")}</div>
   <p class="note">3 נקודות ירוקות = המילה נתפסה. תשובה שגויה מאפסת את הנקודות. אפשר ללחוץ "יודע" כדי לסמן מילה כידועה.</p>`:""}
-  ${d ? `<div class="links"><button class="ghost" data-a="rename">✏️ שינוי שם</button><button class="ghost" data-a="edit">📝 עריכת המילים</button><button class="ghost" data-a="del">🗑️ מחיקת ההכתבה</button></div>` : ""}`;
+  ${d ? `<div class="links three"><button class="ghost" data-a="rename">✏️ שינוי שם</button><button class="ghost" data-a="edit">📝 עריכה</button><button class="ghost" data-a="del">🗑️ מחיקה</button></div>` : ""}`;
   app.querySelector('[data-a="home"]').onclick=()=>go(d ? {name:"dicts"} : {name:"home"});
   app.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>start(b.dataset.m, list));
-  app.querySelectorAll(".mk").forEach(b=>b.onclick=()=>{
+  app.querySelectorAll(".mk").forEach(b=>b.onclick=async()=>{
     const x=list[+b.dataset.k];
-    if(sc(x.en)>=MASTER){ if(!confirm(`לבטל את הסימון של "${x.en}"?`)) return; S.score[x.en]=0; }
+    if(sc(x.en)>=MASTER){ if(!await ask(`לבטל את הסימון של "${x.en}"?`, {ok:"כן, לבטל"})) return; S.score[x.en]=0; }
     else S.score[x.en]=MASTER;
     save(); const y=window.scrollY; render(); window.scrollTo(0,y);
   });
   if(d){
-    app.querySelector('[data-a="rename"]').onclick=()=>{
-      const name = (prompt("שם חדש להכתבה:", d.name) || "").trim().slice(0, 40);
+    app.querySelector('[data-a="rename"]').onclick=async()=>{
+      const name = ((await askText("שם חדש להכתבה", d.name, {ok:"שמירה"})) || "").trim().slice(0, 40);
       if(!name || name === d.name) return;
       d.name = name; save(); render(); flash("השם עודכן");
     };
     app.querySelector('[data-a="edit"]').onclick=()=>go({name:"dictedit", id:d.id, title:d.name, rows:d.words.map(r=>[r[0], r[1]])});
-    app.querySelector('[data-a="del"]').onclick=()=>{
-      if(!confirm(`למחוק את "${d.name}"? ההתקדמות במילים עצמן נשמרת.`)) return;
+    app.querySelector('[data-a="del"]').onclick=async()=>{
+      if(!await ask(`למחוק את "${d.name}"?`, {sub:"ההתקדמות במילים עצמן נשמרת.", ok:"מחיקה", danger:true})) return;
       S.dict = S.dict.filter(x=>x.id!==d.id); save(); go({name:"dicts"});
     };
   }
@@ -902,7 +944,7 @@ function play(){
     app.querySelector('[data-a="check"]').onclick=check;
     inp.onkeydown=e=>{ if(e.key==="Enter"){ inp.disabled ? next() : check(); } };
   }
-  app.querySelector('[data-a="quit"]').onclick=()=>{ if(v.mode==="test" && v.i>0 && !confirm("לצאת מהמבחן? הציון לא יישמר.")) return; save(); go(v.back || {name:"home"}); };
+  app.querySelector('[data-a="quit"]').onclick=async()=>{ if(v.mode==="test" && v.i>0 && !await ask("לצאת מהמבחן?", {sub:"הציון לא יישמר.", ok:"יציאה", cancel:"להמשיך"})) return; save(); go(v.back || {name:"home"}); };
   function next(){ if(view!==v) return; v.i++; save(); render(); }
 }
 
@@ -1088,6 +1130,8 @@ const gknown = u => u.items.filter(it => gsc(it) >= MASTER).length;
 const gtried = u => u.items.filter(it => gsc(it) >= 1).length;               // answered right at least once
 const gpoints = u => u.items.reduce((t, it) => t + gsc(it), 0) / (u.items.length * MASTER); // 0..1, grows with every right answer
 const lvItems = lv => tensesOf(lv).flatMap(u => u.items);
+// A tense is caught when all its sentences are caught.
+const tensesDone = lv => tensesOf(lv).filter(u => gknown(u) === u.items.length).length;
 
 /* ---------- level test ---------- */
 // Each word level ends with a test: TEST_N words from the whole level, choosing and typing mixed.
@@ -1137,11 +1181,11 @@ function testTile(){
   return `<button class="week test ${pass?'done':''}" data-a="ltest"><span class="num ic">🏁</span><span class="t"><b>מבחן שלב ${S.level}</b><span>${t ? `הציון הכי טוב: ${t.best}/${TEST_N}${pass ? " ✓ עברת" : ` · עוברים ב-${TEST_PASS}`}` : `${TEST_N} מילים מכל השלב · עוברים ב-${TEST_PASS} נכונות`}</span></span></button>`;
 }
 function tensesTile(){
-  const lv = S.level, o = tensesOpen(lv), all = lvItems(lv), k = all.filter(it => gsc(it) >= MASTER).length;
+  const lv = S.level, o = tensesOpen(lv), units = tensesOf(lv), k = tensesDone(lv), all = lvItems(lv);
   const p = Math.round(all.reduce((t, it) => t + gsc(it), 0) / (all.length * MASTER) * 100);
-  return `<button class="week sent ${o && k===all.length?'done':''}" data-a="tenses" ${o?'':'disabled'}>
+  return `<button class="week sent ${o && k===units.length?'done':''}" data-a="tenses" ${o?'':'disabled'}>
     <span class="num ic">${o ? "⏳" : "🔒"}</span>
-    <span class="t"><b>זמנים · שלב ${lv}</b><span>${o ? `6 זמנים במשפטים עם מילים מהשלב · נתפסו ${k}/${all.length}` : "ייפתח אחרי שתעבור את מבחן השלב"}</span>${o ? `<span class="mini"><i style="width:${p}%"></i></span>` : ""}</span>
+    <span class="t"><b>זמנים · שלב ${lv}</b><span>${o ? `נתפסו ${k} מתוך ${units.length} זמנים` : "ייפתח אחרי שתעבור את מבחן השלב"}</span>${o ? `<span class="mini"><i style="width:${p}%"></i></span>` : ""}</span>
   </button>`;
 }
 
@@ -1317,7 +1361,7 @@ function dictsScreen(){
   app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
   app.querySelector('[data-a="manual"]').onclick=()=>go({name:"dictedit", title:defaultDictName(), rows:[["",""],["",""],["",""]]});
   const cl = app.querySelector('[data-a="copylink"]');
-  if(cl) cl.onclick=async()=>{ try{ await navigator.clipboard.writeText(shareLink()); flash("הקישור הועתק. פתחו את Chrome והדביקו"); }catch(e){ prompt("העתיקו את הקישור ופתחו אותו ב-Chrome:", shareLink()); } };
+  if(cl) cl.onclick=async()=>{ try{ await navigator.clipboard.writeText(shareLink()); flash("הקישור הועתק. פתחו את Chrome והדביקו"); }catch(e){ copyBox("העתיקו את הקישור ופתחו אותו ב-Chrome", shareLink()); } };
   app.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>go({name:"week", custom:b.dataset.d}));
   app.querySelectorAll(".pick").forEach(inp=>inp.onchange=async()=>{
     const f = inp.files && inp.files[0]; if(!f) return;
@@ -1461,7 +1505,7 @@ function created(){
     <p class="note">הקוד מופיע תמיד גם במסך ההורה.</p>
   </div>`;
   app.querySelector('[data-a="share"]').onclick=async()=>{
-    try{ await navigator.clipboard.writeText(shareLink()); flash("הקישור הועתק"); }catch(e){ prompt("העתיקו את הקישור:", shareLink()); }
+    try{ await navigator.clipboard.writeText(shareLink()); flash("הקישור הועתק"); }catch(e){ copyBox("העתיקו את הקישור", shareLink()); }
   };
   app.querySelector('[data-a="go"]').onclick=()=>go({name:"home"});
 }
@@ -1589,8 +1633,8 @@ function parent(){
   <p class="note">שלב חדש נפתח כשיודעים ${UNLOCK} מילים מהשלב הקודם. אפשר גם לפתוח או לסגור שלב ידנית. שלב שנסגר ייפתח שוב לבד כשיגיע ל-${UNLOCK} מילים בשלב הקודם (אם כבר עבר את זה, הוא יישאר סגור עד שתפתח אותו).</p>
   <h2>מבחני שלב וזמנים</h2>
   <div class="wordlist">
-    ${LEVELS.map(l=>{ const t=testOf(l.n), o=tensesOpen(l.n), all=lvItems(l.n), k=all.filter(it=>gsc(it)>=MASTER).length;
-      return `<div class="wl"><span>שלב ${l.n}: מבחן ${t ? `${t.best}/${TEST_N}${passedTest(l.n) ? " ✓" : ""}` : "—"} · זמנים${o?'':' 🔒'}</span><b>${k} / ${all.length}</b>${o?`<button class="mk" data-gc="${l.n}">סגור</button>`:`<button class="mk" data-go="${l.n}">פתח</button>`}</div>`; }).join("")}
+    ${LEVELS.map(l=>{ const t=testOf(l.n), o=tensesOpen(l.n), k=tensesDone(l.n);
+      return `<div class="wl"><span>שלב ${l.n}: מבחן ${t ? `${t.best}/${TEST_N}${passedTest(l.n) ? " ✓" : ""}` : "—"} · זמנים${o?'':' 🔒'}</span><b>${k} / ${tensesOf(l.n).length} זמנים</b>${o?`<button class="mk" data-gc="${l.n}">סגור</button>`:`<button class="mk" data-go="${l.n}">פתח</button>`}</div>`; }).join("")}
   </div>
   <p class="note">הזמנים של כל שלב נפתחים אחרי שעוברים את מבחן השלב (${TEST_PASS} מתוך ${TEST_N}). המבחן לא עוצר מעבר לשלב הבא. אפשר גם לפתוח או לסגור ידנית.</p>
   <h2>מילים שהכי קשות לו</h2>
@@ -1613,21 +1657,21 @@ function parent(){
       "נוסה דרך: " + (lastSpeak || "-")
     ].join("<br>");
   };
-  app.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{ const n=+b.dataset.u; if(confirm(`לפתוח את שלב ${n} עכשיו?`)){ S.unlocked[n]=true; save(); render(); } });
-  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{ const lv=+b.dataset.go; if(confirm(`לפתוח את הזמנים של שלב ${lv} עכשיו?`)){ S.gunlocked["L"+lv]=true; save(); render(); } });
-  app.querySelectorAll("[data-gc]").forEach(b=>b.onclick=()=>{
+  app.querySelectorAll("[data-u]").forEach(b=>b.onclick=async()=>{ const n=+b.dataset.u; if(await ask(`לפתוח את שלב ${n} עכשיו?`, {ok:"פתיחה"})){ S.unlocked[n]=true; save(); render(); } });
+  app.querySelectorAll("[data-go]").forEach(b=>b.onclick=async()=>{ const lv=+b.dataset.go; if(await ask(`לפתוח את הזמנים של שלב ${lv} עכשיו?`, {ok:"פתיחה"})){ S.gunlocked["L"+lv]=true; save(); render(); } });
+  app.querySelectorAll("[data-gc]").forEach(b=>b.onclick=async()=>{
     const lv=+b.dataset.gc;
-    if(!confirm(`לסגור את הזמנים של שלב ${lv}?`)) return;
-    if(confirm(`למחוק גם את ההתקדמות בזמנים של שלב ${lv}? כדאי אם רק בדקת אותם.`))
+    if(!await ask(`לסגור את הזמנים של שלב ${lv}?`, {ok:"סגירה"})) return;
+    if(await ask(`למחוק גם את ההתקדמות בזמנים של שלב ${lv}?`, {sub:"כדאי אם רק בדקת אותם.", ok:"למחוק", cancel:"להשאיר", danger:true}))
       lvItems(lv).forEach(it=>{ delete S.gscore[it.id]; delete S.gwrong[it.id]; delete S.gseen[it.id]; });
     delete S.gunlocked["L"+lv];
     if(tensesOpen(lv)) S.gunlocked["L"+lv]=false;
     save(); render();
   });
-  app.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{
+  app.querySelectorAll("[data-c]").forEach(b=>b.onclick=async()=>{
     const n=+b.dataset.c;
-    if(!confirm(`לסגור את שלב ${n}?`)) return;
-    if(confirm(`למחוק גם את ההתקדמות בשלב ${n}? כדאי אם רק בדקת אותו.`)){
+    if(!await ask(`לסגור את שלב ${n}?`, {ok:"סגירה"})) return;
+    if(await ask(`למחוק גם את ההתקדמות בשלב ${n}?`, {sub:"כדאי אם רק בדקת אותו.", ok:"למחוק", cancel:"להשאיר", danger:true})){
       LEVEL_WORDS[n-1].forEach(x=>{ delete S.score[x.en]; delete S.wrong[x.en]; });
       delete S.placedLv[n];
     }
@@ -1637,22 +1681,22 @@ function parent(){
     while(!isOpen(S.level)) S.level--;
     useLevel(S.level); save(); render();
   });
-  app.querySelector('[data-a="reset"]').onclick=()=>{ if(confirm("למחוק את כל ההתקדמות ולהתחיל מחדש?")){ S=Object.assign(fresh(), {pinHash:S.pinHash}); useLevel(1); save(); go({name:"home"}); } };
+  app.querySelector('[data-a="reset"]').onclick=async()=>{ if(await ask("למחוק את כל ההתקדמות ולהתחיל מחדש?", {ok:"מחיקה", danger:true})){ S=Object.assign(fresh(), {pinHash:S.pinHash}); useLevel(1); save(); go({name:"home"}); } };
   app.querySelector('[data-a="rename"]').onclick=async()=>{
-    const name = (prompt("שם חדש:", USERNAME) || "").trim().slice(0,30);
+    const name = ((await askText("שם חדש", USERNAME, {ok:"שמירה"})) || "").trim().slice(0,30);
     if(!name || name===USERNAME) return;
     try{ const j = await api({action:"rename", u:USER, name}); if(!j.ok) throw new Error(j.error); USERNAME = name; rememberUser(USER, name); render(); }
-    catch(e){ alert(errText(e)); }
+    catch(e){ tell(errText(e)); }
   };
   app.querySelector('[data-a="share"]').onclick=async()=>{
     const link = shareLink();
-    try{ await navigator.clipboard.writeText(link); flash("הקישור הועתק"); }catch(e){ prompt("העתיקו את הקישור:", link); }
+    try{ await navigator.clipboard.writeText(link); flash("הקישור הועתק"); }catch(e){ copyBox("העתיקו את הקישור", link); }
   };
   app.querySelector('[data-a="newpin"]').onclick=()=>go({name:"pinset"});
   app.querySelectorAll("[data-manage]").forEach(b=>b.onclick=()=>{ const u=b.dataset.manage; useUser(u, null, parentOk.has(u) ? "parent" : "pin"); });
   app.querySelector('[data-a="addkid"]').onclick=()=>go({name:"welcome"});
   app.querySelector('[data-a="forget"]').onclick=async()=>{
-    if(!confirm(`להסיר את ${USERNAME} מהטלפון הזה? ההתקדמות נשמרת בענן, ואפשר לחזור עם קוד המשתמש ${fmtCode(USER)}.`)) return;
+    if(!await ask(`להסיר את ${USERNAME} מהטלפון הזה?`, {sub:`ההתקדמות נשמרת בענן, ואפשר לחזור עם קוד המשתמש ${fmtCode(USER)}.`, ok:"הסרה", danger:true})) return;
     if(pending) await push();
     forgetUser(USER); USER = null;
     const next = deviceUsers()[0];
