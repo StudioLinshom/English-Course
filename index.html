@@ -1246,7 +1246,11 @@ function dictsScreen(){
   app.innerHTML = `
   <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">📷 הכתבות</span></div>
   <p class="note">מצלמים את רשימת המילים מבית הספר, בודקים שהמילים נקראו נכון, ומתרגלים אותן כמו כל שבוע.</p>
-  ${inApk ? `<p class="note">באפליקציה הזאת אי אפשר לצלם. צלמו מהטלפון של ההורה, בפרופיל של הילד, וההכתבה תופיע כאן. אפשר גם להקליד את המילים.</p>`
+  ${inApk ? `<div class="rule"><p><b>📷 צילום עובד דרך Chrome</b></p>
+      <p>באפליקציה הזאת אין גישה למצלמה. כדי לצלם הכתבה:</p>
+      <ol><li>לוחצים על הכפתור למטה כדי להעתיק קישור.</li><li>פותחים את Chrome, באותו טלפון או בכל טלפון אחר, ומדביקים את הקישור.</li><li>שם לוחצים "📷 הכתבות" ומצלמים.</li></ol>
+      <p>ההכתבה נשמרת ל${esc(USERNAME)} ותופיע גם כאן. אפשר גם פשוט להקליד את המילים.</p></div>
+    <button class="btn go wide" data-a="copylink">🔗 העתקת קישור לפתיחה ב-Chrome</button>`
     : `<label class="btn go wide filebtn">📷 צילום הכתבה<input type="file" accept="image/*" capture="environment" class="pick" hidden></label>
        <label class="btn no wide filebtn">🖼️ תמונה מהגלריה<input type="file" accept="image/*" class="pick" hidden></label>`}
   <button class="btn no wide" data-a="manual">⌨️ הקלדת מילים</button>
@@ -1256,6 +1260,8 @@ function dictsScreen(){
   <p class="note">טיפ לצילום: אור טוב, הדף ישר מול המצלמה, ורק רשימת המילים בתמונה.</p>`;
   app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
   app.querySelector('[data-a="manual"]').onclick=()=>go({name:"dictedit", title:defaultDictName(), rows:[["",""],["",""],["",""]]});
+  const cl = app.querySelector('[data-a="copylink"]');
+  if(cl) cl.onclick=async()=>{ try{ await navigator.clipboard.writeText(shareLink()); flash("הקישור הועתק. פתחו את Chrome והדביקו"); }catch(e){ prompt("העתיקו את הקישור ופתחו אותו ב-Chrome:", shareLink()); } };
   app.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>go({name:"week", custom:b.dataset.d}));
   app.querySelectorAll(".pick").forEach(inp=>inp.onchange=async()=>{
     const f = inp.files && inp.files[0]; if(!f) return;
