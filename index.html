@@ -753,7 +753,7 @@ function weekScreen(){
   </div>
   ${d || w!==8 ? `<div class="wordlist">${list.map((x,k)=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="dots">${[0,1,2].map(i=>`<i class="${sc(x.en)>i?'on':''}"></i>`).join("")}</span><button class="mk ${sc(x.en)>=MASTER?'on':''}" data-k="${k}" aria-pressed="${sc(x.en)>=MASTER}">${sc(x.en)>=MASTER?'✓ יודע':'יודע'}</button></div>`).join("")}</div>
   <p class="note">3 נקודות ירוקות = המילה נתפסה. תשובה שגויה מאפסת את הנקודות. אפשר ללחוץ "יודע" כדי לסמן מילה כידועה.</p>`:""}
-  ${d ? `<div class="links"><button class="ghost" data-a="edit">✏️ עריכת המילים</button><button class="ghost" data-a="del">🗑️ מחיקת ההכתבה</button></div>` : ""}`;
+  ${d ? `<div class="links"><button class="ghost" data-a="rename">✏️ שינוי שם</button><button class="ghost" data-a="edit">📝 עריכת המילים</button><button class="ghost" data-a="del">🗑️ מחיקת ההכתבה</button></div>` : ""}`;
   app.querySelector('[data-a="home"]').onclick=()=>go(d ? {name:"dicts"} : {name:"home"});
   app.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>start(b.dataset.m, list));
   app.querySelectorAll(".mk").forEach(b=>b.onclick=()=>{
@@ -763,6 +763,11 @@ function weekScreen(){
     save(); const y=window.scrollY; render(); window.scrollTo(0,y);
   });
   if(d){
+    app.querySelector('[data-a="rename"]').onclick=()=>{
+      const name = (prompt("שם חדש להכתבה:", d.name) || "").trim().slice(0, 40);
+      if(!name || name === d.name) return;
+      d.name = name; save(); render(); flash("השם עודכן");
+    };
     app.querySelector('[data-a="edit"]').onclick=()=>go({name:"dictedit", id:d.id, title:d.name, rows:d.words.map(r=>[r[0], r[1]])});
     app.querySelector('[data-a="del"]').onclick=()=>{
       if(!confirm(`למחוק את "${d.name}"? ההתקדמות במילים עצמן נשמרת.`)) return;
