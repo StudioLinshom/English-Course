@@ -62,6 +62,15 @@ h2{font-size:18px;margin:26px 0 10px}
 .mode.review{margin-top:12px}
 .mode.review.due{border-color:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb, var(--sun) 35%, transparent)}
 .mode.gram{margin-top:12px}
+.mode.dict{margin-top:12px}
+.filebtn{display:block;text-align:center;cursor:pointer}
+.filebtn.busy,[data-a=manual].busy{opacity:.5;pointer-events:none}
+.feedback.reading{display:flex;align-items:center;justify-content:center;gap:8px;color:var(--ink)}
+.feedback.reading .mascot{animation:float 1.2s ease-in-out infinite}
+.editrows{display:grid;gap:8px;margin:10px 0}
+.er{display:grid;grid-template-columns:1fr 1fr 20px 34px;gap:6px;align-items:center}
+.er .field{padding:10px;font-size:16px}
+.er .auto{font-size:14px;text-align:center}
 .mascot.emoji{display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .buddy{cursor:pointer}
 .bubble small{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}
@@ -276,7 +285,7 @@ function useLevel(n){ WEEKS = LEVELS[n-1].weeks; ALL = LEVEL_WORDS[n-1]; }
 const MASTER = 3, ROUND = 10;
 
 /* ---------- state + storage ---------- */
-const fresh = () => ({score:{}, wrong:{}, days:[], placed:false, placedLv:{}, unlocked:{}, level:1, seen:{}, forgot:{}, lastReview:"", gscore:{}, gwrong:{}, gseen:{}, gunlocked:{}, updated:""});
+const fresh = () => ({score:{}, wrong:{}, days:[], placed:false, placedLv:{}, unlocked:{}, level:1, seen:{}, forgot:{}, lastReview:"", gscore:{}, gwrong:{}, gseen:{}, gunlocked:{}, dict:[], updated:""});
 let S = fresh();
 const API = "https://script.google.com/macros/s/AKfycbx7OlcWD9IdMyp_s0ngiI7V1r453A_nfY-pvUR0b-YUdtOmXxKqZTLJ193OyTaGN_16/exec";
 // The first, single-user version saved under this key; devices that still hold that data become Yoav's user.
@@ -299,6 +308,7 @@ function normalize(){
   S.placedLv = S.placedLv || {}; if(S.placed) S.placedLv[1] = true;
   S.seen = S.seen || {}; S.forgot = S.forgot || {}; S.lastReview = S.lastReview || "";
   S.gscore = S.gscore || {}; S.gwrong = S.gwrong || {}; S.gseen = S.gseen || {}; S.gunlocked = S.gunlocked || {};
+  S.dict = Array.isArray(S.dict) ? S.dict : [];
   migrateUnitKeys();
   keepOpenUnits();
   S.unlocked = S.unlocked || {};
@@ -668,6 +678,8 @@ function render(){
   if(view.name==="gunit") return gunitScreen();
   if(view.name==="gplay") return gplay();
   if(view.name==="gresult") return gresult();
+  if(view.name==="dicts") return dictsScreen();
+  if(view.name==="dictedit") return dictEditScreen();
 }
 
 function home(){
@@ -690,6 +702,7 @@ function home(){
   ${!S.placedLv[S.level] ? `<button class="mode" style="margin-top:16px" data-a="place"><b>🔍 מבחן פתיחה</b><span>עוברים על כל 100 המילים ומסמנים מה כבר יודעים. לוקח כ-10 דקות.</span></button>`:""}
   ${reviewCard()}
   ${grammarCard()}
+  ${dictCard()}
   <h2>השבועות</h2>
   <div class="weeks">
     ${WEEKS.map(w=>{ const list=ALL.filter(x=>x.week===w.n), kk=known(list), p=Math.round(kk/list.length*100);
@@ -704,6 +717,7 @@ function home(){
   app.querySelectorAll("[data-l]").forEach(b=>b.onclick=()=>setLevel(+b.dataset.l));
   const rv = app.querySelector('[data-a="review"]'); if(rv) rv.onclick=startReview;
   app.querySelector('[data-a="grammar"]').onclick=()=>go({name:"grammar"});
+  app.querySelector('[data-a="dicts"]').onclick=()=>go({name:"dicts"});
   const nx = app.querySelector('[data-a="next"]'); if(nx) nx.onclick=()=>setLevel(S.level+1);
   const pl = app.querySelector('[data-a="place"]'); if(pl) pl.onclick=()=>start("place", ALL);
   app.querySelector('[data-a="parent"]').onclick=openParent;
@@ -722,17 +736,21 @@ function nextLevelNote(k){
 }
 function weekList(w){ return w===8 ? ALL : ALL.filter(x=>x.week===w); }
 function weekScreen(){
-  const w=view.w, list=weekList(w), name = w===8 ? "חזרה על הכל" : WEEKS[w-1].name;
+  const d = view.custom ? dictById(view.custom) : null;
+  if(view.custom && !d) return go({name:"dicts"});
+  const w = view.w, list = d ? dictWords(d) : weekList(w);
+  const title = d ? `📷 ${esc(d.name)}` : `שלב ${S.level} · שבוע ${w}: ${w===8 ? "חזרה על הכל" : WEEKS[w-1].name}`;
   app.innerHTML = `
-  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">שלב ${S.level} · שבוע ${w}: ${name}</span></div>
+  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">${title}</span></div>
   <div class="modes">
     <button class="mode" data-m="flash"><b>🃏 כרטיסיות</b><span>רואים מילה, מנסים להיזכר, הופכים ובודקים</span></button>
     <button class="mode" data-m="quiz"><b>🎯 בוחן אמריקאי</b><span>${ROUND} שאלות, 4 תשובות לבחירה</span></button>
     <button class="mode" data-m="type"><b>⌨️ כתיבה</b><span>רואים בעברית, כותבים באנגלית</span></button>
   </div>
-  ${w!==8?`<div class="wordlist">${list.map((x,k)=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="dots">${[0,1,2].map(i=>`<i class="${sc(x.en)>i?'on':''}"></i>`).join("")}</span><button class="mk ${sc(x.en)>=MASTER?'on':''}" data-k="${k}" aria-pressed="${sc(x.en)>=MASTER}">${sc(x.en)>=MASTER?'✓ יודע':'יודע'}</button></div>`).join("")}</div>
-  <p class="note">3 נקודות ירוקות = המילה נתפסה. תשובה שגויה מאפסת את הנקודות. אפשר ללחוץ "יודע" כדי לסמן מילה כידועה.</p>`:""}`;
-  app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
+  ${d || w!==8 ? `<div class="wordlist">${list.map((x,k)=>`<div class="wl"><span class="en">${esc(x.en)}</span><span>${esc(x.he)}</span><span class="dots">${[0,1,2].map(i=>`<i class="${sc(x.en)>i?'on':''}"></i>`).join("")}</span><button class="mk ${sc(x.en)>=MASTER?'on':''}" data-k="${k}" aria-pressed="${sc(x.en)>=MASTER}">${sc(x.en)>=MASTER?'✓ יודע':'יודע'}</button></div>`).join("")}</div>
+  <p class="note">3 נקודות ירוקות = המילה נתפסה. תשובה שגויה מאפסת את הנקודות. אפשר ללחוץ "יודע" כדי לסמן מילה כידועה.</p>`:""}
+  ${d ? `<div class="links"><button class="ghost" data-a="edit">✏️ עריכת המילים</button><button class="ghost" data-a="del">🗑️ מחיקת ההכתבה</button></div>` : ""}`;
+  app.querySelector('[data-a="home"]').onclick=()=>go(d ? {name:"dicts"} : {name:"home"});
   app.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>start(b.dataset.m, list));
   app.querySelectorAll(".mk").forEach(b=>b.onclick=()=>{
     const x=list[+b.dataset.k];
@@ -740,6 +758,13 @@ function weekScreen(){
     else S.score[x.en]=MASTER;
     save(); const y=window.scrollY; render(); window.scrollTo(0,y);
   });
+  if(d){
+    app.querySelector('[data-a="edit"]').onclick=()=>go({name:"dictedit", id:d.id, title:d.name, rows:d.words.map(r=>[r[0], r[1]])});
+    app.querySelector('[data-a="del"]').onclick=()=>{
+      if(!confirm(`למחוק את "${d.name}"? ההתקדמות במילים עצמן נשמרת.`)) return;
+      S.dict = S.dict.filter(x=>x.id!==d.id); save(); go({name:"dicts"});
+    };
+  }
 }
 
 // Quiz/typing round: words not yet known (weakest first) plus a few known words
@@ -766,12 +791,13 @@ function flashOrder(list){
 }
 function start(mode, list){
   let items = mode==="place" ? shuffle(ALL) : (mode==="flash" ? flashOrder(list) : pickRound(list));
-  // Quiz and typing in level 2+ also bring back a couple of words from earlier levels.
-  if((mode==="quiz" || mode==="type") && S.level > 1){
+  // Quiz and typing in level 2+ also bring back a couple of words from earlier levels (not in a dictation).
+  if((mode==="quiz" || mode==="type") && S.level > 1 && !view.custom){
     const old = oldestFirst(prevWords(), OLD_PER_ROUND);
     items = shuffle([...items, ...old]);
   }
-  go({name:"play", mode, items, i:0, right:0, missed:[], pool:list, back:view.w||null});
+  const back = view.custom ? {name:"week", custom:view.custom} : view.w ? {name:"week", w:view.w} : null;
+  go({name:"play", mode, items, i:0, right:0, missed:[], pool:list, back});
 }
 
 function startReview(){
@@ -849,7 +875,7 @@ function play(){
     const inp=document.getElementById("inp"); inp.focus();
     const check=()=>{
       if(inp.disabled) return;
-      const ok = inp.value.trim().toLowerCase().replace(/\s+/g," ")===x.en;
+      const ok = inp.value.trim().toLowerCase().replace(/\s+/g," ")===x.en.toLowerCase();
       inp.disabled=true;
       const fb=document.getElementById("fb");
       fb.className="feedback "+(ok?"ok":"bad"); fb.innerHTML = ok ? "✅ " + pick(PRAISE) : `💡 הנכון: <span class="en">${esc(x.en)}</span>`;
@@ -861,7 +887,7 @@ function play(){
     app.querySelector('[data-a="check"]').onclick=check;
     inp.onkeydown=e=>{ if(e.key==="Enter"){ inp.disabled ? next() : check(); } };
   }
-  app.querySelector('[data-a="quit"]').onclick=()=>{ save(); go(v.back?{name:"week",w:v.back}:{name:"home"}); };
+  app.querySelector('[data-a="quit"]').onclick=()=>{ save(); go(v.back || {name:"home"}); };
   function next(){ if(view!==v) return; v.i++; save(); render(); }
 }
 
@@ -874,9 +900,9 @@ function result(){
     ${v.mode==="place" ? `<div class="res-buddy">${mascot("happy", 92)}</div><div class="n">${v.right}/${v.total}</div>` : resultTop(v.right, v.total)}
     <p>${v.right===v.total && v.mode!=="place" ? "🏆 " : ""}${msg}</p>
     ${v.missed.length?`<h2>${v.mode==="place"?"מילים ללמוד":"מילים לחזרה"}</h2><div class="chips">${v.missed.slice(0,40).map(x=>`<span class="chip"><span class="en">${esc(x.en)}</span> · ${esc(x.he)}</span>`).join("")}</div>${v.missed.length>40?`<p class="note">ועוד ${v.missed.length-40} מילים</p>`:""}`:""}
-    <button class="btn go wide" data-a="again">${v.back?"חזרה לשבוע":"למסך הבית"}</button>
+    <button class="btn go wide" data-a="again">${!v.back ? "למסך הבית" : v.back.custom ? "חזרה להכתבה" : "חזרה לשבוע"}</button>
   </div>`;
-  app.querySelector('[data-a="again"]').onclick=()=>go(v.back?{name:"week",w:v.back}:{name:"home"});
+  app.querySelector('[data-a="again"]').onclick=()=>go(v.back || {name:"home"});
   if(v.mode!=="place") celebrateResult(v.right, v.total);
 }
 
@@ -1186,6 +1212,127 @@ function gresult(){
   </div>`;
   app.querySelector('[data-a="again"]').onclick=()=>go({name:"gunit", n:v.n});
   celebrateResult(v.right, v.total);
+}
+
+/* ---------- dictations: photographed or typed word lists ---------- */
+const DICT_MAX = 60;
+const dictById = id => (S.dict || []).find(d => d.id === id);
+const dictWords = d => d.words.map(([en, he]) => ({en, he, week:"d:" + d.id}));
+const defaultDictName = () => { const t = new Date(); return `הכתבה ${t.getDate()}/${t.getMonth()+1}`; };
+function dictCard(){
+  const n = (S.dict || []).length;
+  return `<button class="mode dict" data-a="dicts"><b>📷 הכתבות</b><span>${n ? `${n} הכתבות שמורות · אפשר להוסיף חדשה` : "מצלמים רשימת מילים מבית הספר ומתרגלים אותה"}</span></button>`;
+}
+// Photos are shrunk on the phone before upload: enough detail for OCR, a fraction of the size.
+function shrinkImage(file, max = 1600){
+  return new Promise((resolve, reject) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", .85).split(",")[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad image")); };
+    img.src = url;
+  });
+}
+
+function dictsScreen(){
+  const list = S.dict || [];
+  const inApk = !!window.AndroidTTS; // the Android app's WebView has no camera/file picker
+  app.innerHTML = `
+  <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">📷 הכתבות</span></div>
+  <p class="note">מצלמים את רשימת המילים מבית הספר, בודקים שהמילים נקראו נכון, ומתרגלים אותן כמו כל שבוע.</p>
+  ${inApk ? `<p class="note">באפליקציה הזאת אי אפשר לצלם. צלמו מהטלפון של ההורה, בפרופיל של הילד, וההכתבה תופיע כאן. אפשר גם להקליד את המילים.</p>`
+    : `<label class="btn go wide filebtn">📷 צילום הכתבה<input type="file" accept="image/*" capture="environment" class="pick" hidden></label>
+       <label class="btn no wide filebtn">🖼️ תמונה מהגלריה<input type="file" accept="image/*" class="pick" hidden></label>`}
+  <button class="btn no wide" data-a="manual">⌨️ הקלדת מילים</button>
+  <div class="feedback ${view.err ? "bad" : ""}" id="fb">${view.err ? esc(view.err) : ""}</div>
+  ${list.length ? `<h2>ההכתבות שלי</h2><div class="weeks">${list.slice().reverse().map(d=>{ const ws = dictWords(d), k = known(ws), p = Math.round(k/ws.length*100);
+    return `<button class="week ${k===ws.length?'done':''}" data-d="${d.id}"><span class="num ic">📝</span><span class="t"><b>${esc(d.name)}</b><span>${k} מתוך ${ws.length} מילים</span><span class="mini"><i style="width:${p}%"></i></span></span></button>`; }).join("")}</div>` : ""}
+  <p class="note">טיפ לצילום: אור טוב, הדף ישר מול המצלמה, ורק רשימת המילים בתמונה.</p>`;
+  app.querySelector('[data-a="home"]').onclick=()=>go({name:"home"});
+  app.querySelector('[data-a="manual"]').onclick=()=>go({name:"dictedit", title:defaultDictName(), rows:[["",""],["",""],["",""]]});
+  app.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>go({name:"week", custom:b.dataset.d}));
+  app.querySelectorAll(".pick").forEach(inp=>inp.onchange=async()=>{
+    const f = inp.files && inp.files[0]; if(!f) return;
+    const fb = document.getElementById("fb");
+    fb.className = "feedback reading"; fb.innerHTML = `${mascot("happy", 40)}<span>קורא את המילים… זה לוקח כמה שניות</span>`;
+    app.querySelectorAll(".filebtn,[data-a=manual]").forEach(el=>el.classList.add("busy"));
+    try{
+      const image = await shrinkImage(f);
+      const j = await api({action:"ocr", u:USER, image, mime:"image/jpeg"});
+      if(!j.ok) throw new Error(j.error);
+      if(!j.words.length) return go({name:"dicts", err:"לא מצאתי מילים באנגלית בתמונה. נסו לצלם מקרוב ובאור טוב, או הקלידו את המילים."});
+      SFX.ok();
+      go({name:"dictedit", title:defaultDictName(), rows:j.words.slice(0, DICT_MAX)});
+    }catch(err){
+      go({name:"dicts", err: err.message==="ocr failed" || err.message==="bad image" ? "לא הצלחתי לקרוא את התמונה. נסו שוב, או הקלידו את המילים." : errText(err)});
+    }
+  });
+}
+
+function dictEditScreen(){
+  const v = view;
+  v.rows = v.rows && v.rows.length ? v.rows : [["",""]];
+  app.innerHTML = `
+  <div class="top"><button class="back" data-a="back">ביטול</button><span class="title">${v.id ? "עריכת הכתבה" : "הכתבה חדשה"}</span></div>
+  <div class="form"><label>שם ההכתבה<input class="field" id="dn" maxlength="40" value="${esc(v.title || "")}"></label></div>
+  <p class="note">בדקו שכל מילה נכונה, מחקו מה שלא שייך, והוסיפו מה שחסר.${v.rows.some(r=>r[2]) ? " תרגום שמסומן ב-🌐 נעשה אוטומטית, כדאי לבדוק אותו." : ""}</p>
+  <div class="editrows">${v.rows.map((r,i)=>`<div class="er">
+    <input class="field en" data-en="${i}" value="${esc(r[0])}" placeholder="English" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <input class="field" data-he="${i}" value="${esc(r[1])}" placeholder="תרגום">
+    ${r[2] ? `<span class="auto" title="תרגום אוטומטי">🌐</span>` : `<span class="auto"></span>`}
+    <button class="mk" data-rm="${i}" aria-label="מחיקת שורה">✕</button></div>`).join("")}</div>
+  <button class="btn no wide" data-a="add">➕ הוספת מילה</button>
+  <button class="btn no wide" data-a="tr">🌐 תרגום אוטומטי למילים בלי תרגום</button>
+  <button class="btn go wide" data-a="save">💾 שמירה ותרגול</button>
+  <div class="feedback bad" id="fb"></div>`;
+  const fb = document.getElementById("fb");
+  document.getElementById("dn").oninput = e => { v.title = e.target.value; };
+  app.querySelectorAll("[data-en]").forEach(el=>el.oninput=()=>{ v.rows[+el.dataset.en][0] = el.value; });
+  app.querySelectorAll("[data-he]").forEach(el=>el.oninput=()=>{ const r = v.rows[+el.dataset.he]; r[1] = el.value; r[2] = false; });
+  app.querySelectorAll("[data-rm]").forEach(b=>b.onclick=()=>{ v.rows.splice(+b.dataset.rm, 1); render(); });
+  app.querySelector('[data-a="add"]').onclick=()=>{
+    if(v.rows.length >= DICT_MAX) return;
+    v.rows.push(["",""]); render();
+    const last = app.querySelectorAll("[data-en]"); last[last.length-1].focus();
+  };
+  app.querySelector('[data-a="back"]').onclick=()=>go(v.id ? {name:"week", custom:v.id} : {name:"dicts"});
+  app.querySelector('[data-a="tr"]').onclick=async e=>{
+    const need = v.rows.filter(r=>r[0].trim() && !r[1].trim());
+    if(!need.length){ fb.textContent = "לכל המילים כבר יש תרגום."; return; }
+    e.target.disabled = true; fb.className = "feedback"; fb.textContent = "מתרגם…";
+    try{
+      const j = await api({action:"translate", u:USER, words:need.map(r=>r[0].trim())}); // the server lowercases (except "I")
+      if(!j.ok) throw new Error(j.error);
+      need.forEach((r,i)=>{ if(j.words[i]){ r[1] = j.words[i][1]; r[2] = true; } });
+      render();
+    }catch(err){ fb.className = "feedback bad"; fb.textContent = errText(err); e.target.disabled = false; }
+  };
+  app.querySelector('[data-a="save"]').onclick=()=>{
+    const seen = {}, words = [];
+    for(const r of v.rows){
+      let en = r[0].trim().replace(/\s+/g, " "), he = r[1].trim();
+      if(!en) continue;
+      if(!/^[A-Za-z][A-Za-z' \-]*$/.test(en)){ fb.textContent = `"${en}" לא נראית כמו מילה באנגלית. תקנו או מחקו אותה.`; return; }
+      if(en !== "I") en = en.toLowerCase();
+      if(seen[en]) continue; seen[en] = 1;
+      if(!he){ fb.textContent = `חסר תרגום ל-"${en}". אפשר ללחוץ על "תרגום אוטומטי".`; return; }
+      words.push([en, he]);
+    }
+    if(words.length < 2){ fb.textContent = "צריך לפחות 2 מילים."; return; }
+    const name = (v.title || "").trim() || defaultDictName();
+    let id = v.id;
+    if(id){ const d = dictById(id); d.name = name; d.words = words; }
+    else { id = Date.now().toString(36); S.dict.push({id, name, created:today(), words}); }
+    save();
+    go({name:"week", custom:id});
+    SFX.star(); cheer("ההכתבה נשמרה! בוא נתרגל"); confetti(50);
+  };
 }
 
 function welcome(){
