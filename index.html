@@ -79,7 +79,6 @@ h2{font-size:18px;margin:26px 0 10px}
 .savebar .feedback{margin-top:0;min-height:0}
 details.raw pre{white-space:pre-wrap;direction:ltr;text-align:left;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:8px;font-size:13px;max-height:180px;overflow:auto}
 .mascot.emoji{display:inline-flex;align-items:center;justify-content:center;line-height:1}
-.buddy{cursor:pointer}
 .bubble small{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:2px}
 .buddies{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
 .bud{background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:10px 2px 8px;display:grid;justify-items:center;gap:4px;font-size:14px}
@@ -91,9 +90,11 @@ details.raw pre{white-space:pre-wrap;direction:ltr;text-align:left;background:va
 .board::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
   background:radial-gradient(circle at 12% 22%,#fff 1.5px,transparent 2.5px),radial-gradient(circle at 78% 14%,#fff 1px,transparent 2px),
              radial-gradient(circle at 88% 70%,#fff 1.5px,transparent 2.5px),radial-gradient(circle at 30% 85%,#fff 1px,transparent 2px)}
-.buddy{display:flex;align-items:center;gap:10px;margin-top:12px}
+.buddy{display:flex;align-items:center;gap:12px;margin-top:12px}
+.buddy-pick{flex:none;display:grid;justify-items:center;gap:4px;background:none;border:0;padding:0;color:var(--muted)}
+.buddy-pick span{font-size:12px;font-weight:600;border:2px solid var(--line);border-radius:99px;padding:1px 8px;background:var(--paper);white-space:nowrap}
 .buddy .mascot{flex:none;animation:float 3s ease-in-out infinite}
-.bubble{position:relative;background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:8px 12px;font-weight:600;font-size:15px}
+.bubble{flex:1;min-height:58px;display:flex;align-items:center;position:relative;background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:8px 12px;font-weight:600;font-size:15px}
 .bubble::before{content:"";position:absolute;inset-inline-start:-9px;top:50%;margin-top:-7px;border:7px solid transparent;border-inline-end-color:var(--line)}
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
 .num.ic{position:relative;font-size:24px}
@@ -104,7 +105,7 @@ details.raw pre{white-space:pre-wrap;direction:ltr;text-align:left;background:va
 .weeks .week:nth-child(6n+4) .num{background:rgba(46,154,99,.18)}
 .weeks .week:nth-child(6n+5) .num{background:rgba(181,123,255,.18)}
 .weeks .week:nth-child(6n+6) .num{background:rgba(255,143,177,.22)}
-.weeks .week.done .num{background:var(--sun)}
+.weeks .week.done{border-color:color-mix(in srgb,var(--field) 45%,var(--line))}
 .week,.mode,.lv,.opt,.btn,.tile{transition:transform .12s}
 .week:active,.mode:active,.lv:active,.opt:active,.btn:active,.tile:active{transform:scale(.97)}
 #cheer{position:fixed;top:12px;left:50%;transform:translate(-50%,-140%);display:flex;align-items:center;gap:8px;z-index:50;pointer-events:none;
@@ -181,7 +182,7 @@ details.note summary{cursor:pointer}
 .weeks{display:grid;gap:10px}
 .week{display:flex;align-items:center;gap:14px;background:var(--paper);border:2px solid var(--line);border-radius:16px;padding:12px 14px;text-align:right;width:100%}
 .week .num{flex:none;width:42px;height:42px;border-radius:12px;background:var(--chalk);display:grid;place-items:center;font-family:"Fredoka",sans-serif;font-weight:700;font-size:20px;color:var(--field)}
-.week.done .num{background:var(--sun);color:#1C2B4B}
+.week.done .num.ic small{background:var(--field-2)}
 .week .t{flex:1;min-width:0}
 .week .t b{display:block;font-size:16px}
 .week .t span{font-size:14px;color:var(--muted)}
@@ -744,17 +745,16 @@ function home(){
     <div class="bar"><i style="width:${k}%"></i></div>
     <div class="stats"><span>🔥 רצף: ${streak()} ימים</span><span>📅 השבוע: ${weekDays()} מתוך 5 ימים</span></div>
   </section>
-  <div class="buddy" data-a="buddy" role="button" tabindex="0" aria-label="החלפת חבר">${mascot("happy", 58)}<div class="bubble">${esc(homeTip(k))}<small>✏️ החלפת חבר</small></div></div>
+  <div class="buddy"><button class="buddy-pick" data-a="buddy" aria-label="החלפת חבר">${mascot("happy", 58)}<span>✏️ החלפת חבר</span></button><div class="bubble">${esc(homeTip(k))}</div></div>
   <div class="levels">${LEVELS.map(l=>{ const o=isOpen(l.n), done=known(LEVEL_WORDS[l.n-1])===LEVEL_WORDS[l.n-1].length;
     return `<button class="lv ${l.n===S.level?'cur':''}" data-l="${l.n}" ${o?'':'disabled'}>${o?LEVEL_ICONS[l.n-1]+' ':'🔒 '}שלב ${l.n}${done?' ✓':''}</button>`; }).join("")}</div>
   ${nextLevelNote(k)}
   ${!S.placedLv[S.level] ? `<button class="mode" style="margin-top:16px" data-a="place"><b>🔍 מבחן פתיחה</b><span>עוברים על כל 100 המילים ומסמנים מה כבר יודעים. לוקח כ-10 דקות.</span></button>`:""}
   ${reviewCard()}
-  <h2>השבועות</h2>
-  <div class="weeks">
+  <div class="weeks" style="margin-top:18px">
     ${WEEKS.map(w=>{ const list=ALL.filter(x=>x.week===w.n), kk=known(list), p=Math.round(kk/list.length*100);
       return `<button class="week ${kk===list.length?'done':''}" data-w="${w.n}">
-        <span class="num ic">${weekIcon(w.name)}<small>${w.n}</small></span>
+        <span class="num ic">${weekIcon(w.name)}<small>${kk===list.length ? "✓" : w.n}</small></span>
         <span class="t"><b>${w.name}</b><span>${kk} מתוך ${list.length} מילים</span><span class="mini"><i style="width:${p}%"></i></span></span>
       </button>`;}).join("")}
     <button class="week" data-w="8"><span class="num ic">🔄<small>8</small></span><span class="t"><b>חזרה על הכל</b><span>בוחן מעורב, עם עדיפות למילים שעוד לא נתפסו</span></span></button>
@@ -789,7 +789,7 @@ function weekScreen(){
   const d = view.custom ? dictById(view.custom) : null;
   if(view.custom && !d) return go({name:"dicts"});
   const w = view.w, list = d ? dictWords(d) : weekList(w);
-  const title = d ? `📷 ${esc(d.name)}` : `שלב ${S.level} · שבוע ${w}: ${w===8 ? "חזרה על הכל" : WEEKS[w-1].name}`;
+  const title = d ? `📷 ${esc(d.name)}` : `שלב ${S.level} · ${w===8 ? "חזרה על הכל" : WEEKS[w-1].name}`;
   app.innerHTML = `
   <div class="top"><button class="back" data-a="home">חזרה</button><span class="title">${title}</span></div>
   <div class="modes">
@@ -951,14 +951,14 @@ function play(){
 function result(){
   const v=view;
   if(v.mode==="test") return testResult();
-  const msg = v.mode==="place" ? "מבחן הפתיחה הסתיים. מכאן מתחילים לעבוד שבוע אחרי שבוע."
+  const msg = v.mode==="place" ? "מבחן הפתיחה הסתיים. מכאן ממשיכים ללמוד בקצב שלך."
     : v.right===v.total ? "מושלם! כל התשובות נכונות." : v.right/v.total>=.7 ? "יפה מאוד. עוד קצת חזרה וזה שלך." : "התחלה טובה. כדאי לעשות עוד סבב כרטיסיות.";
   app.innerHTML = `
   <div class="result">
     ${v.mode==="place" ? `<div class="res-buddy">${mascot("happy", 92)}</div><div class="n">${v.right}/${v.total}</div>` : resultTop(v.right, v.total)}
     <p>${v.right===v.total && v.mode!=="place" ? "🏆 " : ""}${msg}</p>
     ${v.missed.length?`<h2>${v.mode==="place"?"מילים ללמוד":"מילים לחזרה"}</h2><div class="chips">${v.missed.slice(0,40).map(x=>`<span class="chip"><span class="en">${esc(x.en)}</span> · ${esc(x.he)}</span>`).join("")}</div>${v.missed.length>40?`<p class="note">ועוד ${v.missed.length-40} מילים</p>`:""}`:""}
-    <button class="btn go wide" data-a="again">${!v.back ? "למסך הבית" : v.back.custom ? "חזרה להכתבה" : "חזרה לשבוע"}</button>
+    <button class="btn go wide" data-a="again">${!v.back ? "למסך הבית" : v.back.custom ? "חזרה להכתבה" : "חזרה לנושא"}</button>
   </div>`;
   app.querySelector('[data-a="again"]').onclick=()=>go(v.back || {name:"home"});
   if(v.mode!=="place") celebrateResult(v.right, v.total);
@@ -1619,7 +1619,7 @@ function parent(){
   <div class="links"><button class="ghost" data-a="newpin">שינוי קוד הורה</button><button class="ghost" data-a="forget">הסרת המשתמש מהטלפון הזה</button></div>
   <h2>שלב ${S.level}</h2>
   <div class="wordlist">
-    ${WEEKS.map(w=>{const l=ALL.filter(x=>x.week===w.n);return `<div class="wl"><span>שבוע ${w.n}: ${w.name}</span><b>${known(l)} / ${l.length}</b></div>`;}).join("")}
+    ${WEEKS.map(w=>{const l=ALL.filter(x=>x.week===w.n);return `<div class="wl"><span>${w.n}. ${w.name}</span><b>${known(l)} / ${l.length}</b></div>`;}).join("")}
     <div class="wl"><span><b>סה"כ בשלב</b></span><b>${known(ALL)} / ${ALL.length}</b></div>
   </div>
   <h2>כל השלבים</h2>
